@@ -2,33 +2,34 @@
 <html lang="en">  
 <head>  
   <meta charset="UTF-8" />  
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />  
   <title>Cholecystectomy Incision Annotation - Phase 02</title>  
   <style>  
-    /* ── Reset ── */  
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {  
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;  
-      background: #f4f6f8;  
+      background: #f0f2f5;  
       color: #1e293b;  
-      line-height: 1.5;  
-      padding: 16px;  
+      line-height: 1.55;  
+      padding: 12px;  
       -webkit-text-size-adjust: 100%;  
+      -webkit-font-smoothing: antialiased;  
     }
 
     h1 {  
-      font-size: 1.35rem;  
+      font-size: 1.25rem;  
       text-align: center;  
       margin-bottom: 4px;  
+      color: #0f172a;  
     }
 
     .subtitle {  
       text-align: center;  
-      font-size: 0.85rem;  
+      font-size: 0.82rem;  
       color: #64748b;  
-      margin-bottom: 20px;  
-      max-width: 600px;  
+      margin-bottom: 18px;  
+      max-width: 640px;  
       margin-left: auto;  
       margin-right: auto;  
     }
@@ -36,201 +37,157 @@
     /* ── Cards ── */  
     .card {  
       background: #fff;  
-      border-radius: 12px;  
-      box-shadow: 0 1px 3px rgba(0,0,0,.1);  
+      border-radius: 14px;  
+      box-shadow: 0 1px 4px rgba(0,0,0,.08), 0 2px 12px rgba(0,0,0,.04);  
       padding: 20px;  
-      margin-bottom: 16px;  
-      max-width: 700px;  
+      margin-bottom: 14px;  
+      max-width: 720px;  
       margin-left: auto;  
       margin-right: auto;  
-    }
-
+    }  
     .card h2 {  
-      font-size: 1rem;  
+      font-size: 0.95rem;  
       margin-bottom: 12px;  
       color: #334155;  
-    }
-
+      display: flex;  
+      align-items: center;  
+      gap: 6px;  
+    }  
+    .card h2 .num {  
+      display: inline-flex;  
+      align-items: center;  
+      justify-content: center;  
+      width: 24px; height: 24px;  
+      background: #3b82f6;  
+      color: #fff;  
+      border-radius: 50%;  
+      font-size: 0.75rem;  
+      font-weight: 700;  
+      flex-shrink: 0;  
+    }  
     .card.hidden { display: none; }
 
-    /* ── Form elements ── */  
-    label {  
-      display: block;  
-      font-size: 0.85rem;  
-      font-weight: 600;  
-      margin-bottom: 4px;  
-      color: #475569;  
-    }
-
+    /* ── Form ── */  
+    label { display: block; font-size: 0.82rem; font-weight: 600; margin-bottom: 4px; color: #475569; }  
     input[type="email"], select {  
-      width: 100%;  
-      padding: 10px 12px;  
-      border: 1px solid #cbd5e1;  
-      border-radius: 8px;  
-      font-size: 1rem;  
-      margin-bottom: 12px;  
-      -webkit-appearance: none;  
-    }
-
-    input[type="email"]:focus, select:focus {  
-      outline: none;  
-      border-color: #3b82f6;  
-      box-shadow: 0 0 0 3px rgba(59,130,246,.15);  
+      width: 100%; padding: 10px 12px;  
+      border: 1px solid #cbd5e1; border-radius: 10px;  
+      font-size: 1rem; margin-bottom: 12px;  
+      -webkit-appearance: none; appearance: none;  
+      background: #fff;  
+    }  
+    input:focus, select:focus {  
+      outline: none; border-color: #3b82f6;  
+      box-shadow: 0 0 0 3px rgba(59,130,246,.12);  
     }
 
     /* ── Buttons ── */  
     .btn {  
-      display: inline-flex;  
-      align-items: center;  
-      justify-content: center;  
-      gap: 6px;  
-      padding: 10px 20px;  
-      border: none;  
-      border-radius: 8px;  
-      font-size: 0.9rem;  
-      font-weight: 600;  
-      cursor: pointer;  
-      transition: background .2s, opacity .2s;  
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;  
+      padding: 11px 22px; border: none; border-radius: 10px;  
+      font-size: 0.88rem; font-weight: 600; cursor: pointer;  
+      transition: background .2s, opacity .2s, transform .1s;  
       -webkit-tap-highlight-color: transparent;  
-    }
-
-    .btn:disabled {  
-      opacity: .45;  
-      cursor: not-allowed;  
-    }
-
+    }  
+    .btn:active { transform: scale(.97); }  
+    .btn:disabled { opacity: .4; cursor: not-allowed; transform: none; }  
     .btn-primary   { background: #3b82f6; color: #fff; }  
-    .btn-primary:hover:not(:disabled) { background: #2563eb; }
-
+    .btn-primary:hover:not(:disabled) { background: #2563eb; }  
     .btn-secondary { background: #e2e8f0; color: #334155; }  
-    .btn-secondary:hover:not(:disabled) { background: #cbd5e1; }
-
-    .btn-danger    { background: #ef4444; color: #fff; }  
-    .btn-danger:hover:not(:disabled) { background: #dc2626; }
-
+    .btn-secondary:hover:not(:disabled) { background: #cbd5e1; }  
+    .btn-danger    { background: #fee2e2; color: #dc2626; }  
+    .btn-danger:hover:not(:disabled) { background: #fecaca; }  
     .btn-success   { background: #22c55e; color: #fff; }  
-    .btn-success:hover:not(:disabled) { background: #16a34a; }
-
-    .btn-block { width: 100%; }
+    .btn-success:hover:not(:disabled) { background: #16a34a; }  
+    .btn-block     { width: 100%; }
 
     /* ── Video ── */  
     .video-wrap {  
-      position: relative;  
-      width: 100%;  
-      border-radius: 8px;  
-      overflow: hidden;  
-      background: #000;  
-      margin-bottom: 12px;  
-    }
-
-    .video-wrap video {  
-      display: block;  
-      width: 100%;  
-      height: auto;  
-    }
-
+      position: relative; width: 100%;  
+      border-radius: 10px; overflow: hidden;  
+      background: #000; margin-bottom: 12px;  
+    }  
+    .video-wrap video { display: block; width: 100%; height: auto; }  
     #videoOverlay {  
-      position: absolute;  
-      inset: 0;  
-      display: flex;  
-      align-items: center;  
-      justify-content: center;  
-      background: rgba(0,0,0,.45);  
-      color: #fff;  
-      font-size: 1.1rem;  
-      font-weight: 600;  
-      pointer-events: none;  
-    }
-
-    #videoOverlay.hidden { display: none; }
+      position: absolute; inset: 0;  
+      display: flex; align-items: center; justify-content: center;  
+      background: rgba(0,0,0,.55); color: #fff;  
+      font-size: 1rem; font-weight: 600;  
+      pointer-events: none; transition: opacity .3s;  
+    }  
+    #videoOverlay.hidden { opacity: 0; pointer-events: none; }
 
     /* ── Canvas ── */  
     .canvas-wrap {  
-      position: relative;  
-      width: 100%;  
-      border-radius: 8px;  
-      overflow: hidden;  
-      background: #1e293b;  
-      margin-bottom: 8px;  
-      touch-action: none;          /* ← critical for mobile drawing */  
-      -webkit-user-select: none;  
-      user-select: none;  
-    }
-
-    .canvas-wrap canvas {  
-      display: block;  
-      width: 100%;  
-      height: auto;  
-    }
+      position: relative; width: 100%;  
+      border-radius: 10px; overflow: hidden;  
+      background: #111827; margin-bottom: 8px;  
+      touch-action: none;  
+      -webkit-user-select: none; user-select: none;  
+      /* prevent pull-to-refresh while drawing */  
+      overscroll-behavior: contain;  
+    }  
+    .canvas-wrap canvas { display: block; width: 100%; height: auto; }
 
     .canvas-hint {  
-      font-size: 0.8rem;  
-      color: #94a3b8;  
-      text-align: center;  
-      margin-bottom: 12px;  
+      font-size: 0.78rem; color: #94a3b8;  
+      text-align: center; margin-bottom: 12px;  
     }
 
     /* ── Status ── */  
     .status-bar {  
-      display: flex;  
-      align-items: center;  
-      gap: 8px;  
-      padding: 8px 12px;  
-      border-radius: 8px;  
-      font-size: 0.85rem;  
-      margin-bottom: 12px;  
-    }
-
+      display: flex; align-items: center; gap: 8px;  
+      padding: 10px 14px; border-radius: 10px;  
+      font-size: 0.82rem; margin-bottom: 12px; font-weight: 500;  
+    }  
     .status-bar.info    { background: #eff6ff; color: #1d4ed8; }  
     .status-bar.success { background: #f0fdf4; color: #15803d; }  
-    .status-bar.warn    { background: #fffbeb; color: #b45309; }
+    .status-bar.warn    { background: #fffbeb; color: #b45309; }  
+    .status-bar.error   { background: #fef2f2; color: #dc2626; }
 
-    /* ── Confidence radio group ── */  
-    .radio-group {  
-      display: flex;  
-      flex-wrap: wrap;  
-      gap: 8px;  
-      margin: 12px 0;  
-    }
-
+    /* ── Radio group ── */  
+    .radio-group { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; }  
     .radio-group label {  
-      display: flex;  
-      align-items: center;  
-      gap: 6px;  
-      font-weight: 400;  
-      font-size: 0.85rem;  
-      cursor: pointer;  
-      padding: 6px 12px;  
-      border: 1px solid #e2e8f0;  
-      border-radius: 8px;  
-      transition: background .15s;  
-    }
-
-    .radio-group input[type="radio"] { accent-color: #3b82f6; }  
-    .radio-group label:has(input:checked) {  
-      background: #eff6ff;  
-      border-color: #93c5fd;  
-    }
+      display: flex; align-items: center; gap: 8px;  
+      font-weight: 400; font-size: 0.85rem; cursor: pointer;  
+      padding: 8px 14px; border: 1.5px solid #e2e8f0;  
+      border-radius: 10px; transition: background .15s, border-color .15s;  
+    }  
+    .radio-group input[type="radio"] { accent-color: #3b82f6; flex-shrink: 0; }  
+    .radio-group label:has(input:checked) { background: #eff6ff; border-color: #93c5fd; }
 
     /* ── Progress ── */  
     .progress-text {  
-      text-align: center;  
-      font-size: 0.8rem;  
-      color: #64748b;  
-      margin-bottom: 12px;  
+      text-align: center; font-size: 0.8rem;  
+      color: #64748b; margin-bottom: 10px; font-weight: 500;  
+    }  
+    .progress-bar-wrap {  
+      width: 100%; height: 6px; background: #e2e8f0;  
+      border-radius: 3px; margin-bottom: 14px; overflow: hidden;  
+    }  
+    .progress-bar-fill {  
+      height: 100%; background: #3b82f6; border-radius: 3px;  
+      transition: width .4s ease;  
     }
 
-    /* ── Done screen ── */  
-    .done-screen {  
-      text-align: center;  
-      padding: 40px 20px;  
-    }
+    /* ── Done ── */  
+    .done-screen { text-align: center; padding: 40px 20px; }  
+    .done-screen h2 { font-size: 1.3rem; margin-bottom: 8px; }  
+    .done-screen p  { color: #64748b; font-size: 0.92rem; }
 
-    .done-screen h2 { font-size: 1.25rem; margin-bottom: 8px; }  
-    .done-screen p  { color: #64748b; }
+    .flex-row { display: flex; gap: 8px; flex-wrap: wrap; }
 
-    /* ── Utility ── */  
-    .flex-row { display: flex; gap: 8px; flex-wrap: wrap; }  
+    /* ── Loading spinner ── */  
+    .spinner {  
+      display: inline-block; width: 18px; height: 18px;  
+      border: 2.5px solid rgba(255,255,255,.3);  
+      border-top-color: #fff; border-radius: 50%;  
+      animation: spin .7s linear infinite;  
+    }  
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Error card ── */  
+    #cardError p { margin-bottom: 8px; }  
   </style>  
 </head>  
 <body>
@@ -241,14 +198,17 @@
     When you submit, your annotation is sent directly to the study team.  
   </p>
 
-  <!-- ════════════════════════════════════════════  
-       1. PARTICIPANT DETAILS  
-       ════════════════════════════════════════════ -->  
+  <!-- ═══ ERROR ═══ -->  
+  <div class="card hidden" id="cardError">  
+    <div class="status-bar error" id="errorMessage">An error occurred.</div>  
+  </div>
+
+  <!-- ═══ 1. PARTICIPANT DETAILS ═══ -->  
   <div class="card" id="cardDetails">  
-    <h2>1. Participant Details</h2>
+    <h2><span class="num">1</span> Participant Details</h2>
 
     <label for="emailInput">Participant Email</label>  
-    <input type="email" id="emailInput" placeholder="Enter your email. This is required before submitting." />
+    <input type="email" id="emailInput" placeholder="Enter your email (required)" autocomplete="email" />
 
     <label for="fatigueSelect">How are you feeling right now?</label>  
     <select id="fatigueSelect">  
@@ -263,16 +223,16 @@
     </select>  
   </div>
 
-  <!-- ════════════════════════════════════════════  
-       2. VIDEO CLIP  
-       ════════════════════════════════════════════ -->  
+  <!-- ═══ 2. VIDEO CLIP ═══ -->  
   <div class="card" id="cardVideo">  
-    <h2>2. Review Clip</h2>
+    <h2><span class="num">2</span> Review Clip</h2>
 
-    <div class="progress-text" id="clipProgress">Initializing…</div>
+    <div class="progress-text" id="clipProgress">Initializing…</div>  
+    <div class="progress-bar-wrap">  
+      <div class="progress-bar-fill" id="clipProgressBar" style="width:0%"></div>  
+    </div>
 
-    <div class="video-wrap">  
-      <!-- playsinline + webkit-playsinline are critical for iOS -->  
+    <div class="video-wrap" id="videoWrap">  
       <video  
         id="clipVideo"  
         playsinline  
@@ -289,11 +249,9 @@
     </div>  
   </div>
 
-  <!-- ════════════════════════════════════════════  
-       3. ANNOTATE FINAL FRAME  
-       ════════════════════════════════════════════ -->  
+  <!-- ═══ 3. ANNOTATE ═══ -->  
   <div class="card" id="cardAnnotate">  
-    <h2>3. Annotate Final Frame</h2>
+    <h2><span class="num">3</span> Annotate Final Frame</h2>
 
     <div id="statusAnnotate" class="status-bar info">  
       The final frame appears below shortly.  
@@ -310,11 +268,9 @@
     <button class="btn btn-danger" id="btnClear" disabled>✕ Clear Line</button>  
   </div>
 
-  <!-- ════════════════════════════════════════════  
-       4. SUBMIT  
-       ════════════════════════════════════════════ -->  
+  <!-- ═══ 4. SUBMIT ═══ -->  
   <div class="card" id="cardSubmit">  
-    <h2>4. Submit Annotation</h2>
+    <h2><span class="num">4</span> Submit Annotation</h2>
 
     <div id="statusSubmit" class="status-bar warn">  
       Draw the incision on the frozen frame to enable submission.  
@@ -325,32 +281,24 @@
     </button>  
   </div>
 
-  <!-- ════════════════════════════════════════════  
-       5. CONFIDENCE (shown after submit)  
-       ════════════════════════════════════════════ -->  
+  <!-- ═══ 5. CONFIDENCE ═══ -->  
   <div class="card hidden" id="cardConfidence">  
     <h2>Final Question</h2>  
-    <p style="margin-bottom:8px;font-size:.9rem;">  
+    <p style="margin-bottom:8px;font-size:.88rem;">  
       On a scale from 1 to 5, how confident did you feel that your incision lines  
       were safe and did not cross a danger zone?  
-    </p>
-
+    </p>  
     <div class="radio-group" id="confidenceGroup">  
       <label><input type="radio" name="confidence" value="1" /> 1 – Very Insecure</label>  
       <label><input type="radio" name="confidence" value="2" /> 2 – Slightly insecure</label>  
       <label><input type="radio" name="confidence" value="3" /> 3 – Neutral / Not sure</label>  
       <label><input type="radio" name="confidence" value="4" /> 4 – With a certain level of confidence</label>  
       <label><input type="radio" name="confidence" value="5" /> 5 – Very confident</label>  
-    </div>
-
-    <button class="btn btn-success btn-block" id="btnConfidence" disabled>  
-      Submit Confidence  
-    </button>  
+    </div>  
+    <button class="btn btn-success btn-block" id="btnConfidence" disabled>Submit Confidence</button>  
   </div>
 
-  <!-- ════════════════════════════════════════════  
-       6. DONE  
-       ════════════════════════════════════════════ -->  
+  <!-- ═══ 6. DONE ═══ -->  
   <div class="card hidden" id="cardDone">  
     <div class="done-screen">  
       <h2>All Clips Completed 🎉</h2>  
