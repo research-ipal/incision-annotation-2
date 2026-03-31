@@ -1,104 +1,196 @@
 /* ================================================================  
    Cholecystectomy Incision Annotation – Phase 02  
-   Mobile-safe app.js  
-   ================================================================ */
-
+   Fully mobile-safe  ·  Reads clips from clips.csv  
+   ================================================================ */  
 (function () {  
   "use strict";
 
-  // ── Configuration ────────────────────────────────────────────  
-  // Replace / extend this array with your actual clip URLs.  
-  const CLIP_URLS = [  
-    "clips/clip01.mp4",  
-    "clips/clip02.mp4",  
-    "clips/clip03.mp4"  
-  ];
+  // ────────────────────────────────────────────────────────────  
+  // CONFIG — adjust these to match your setup  
+  // ────────────────────────────────────────────────────────────  
+  const CLIPS_CSV_PATH  = "clips.csv";          // path to the CSV / data file  
+  const SUBMIT_ENDPOINT = "/api/annotations";   // backend URL  
+  const MAX_CANVAS_DIM  = 2048;                 // keeps iOS GPU happy
 
-  // Backend endpoint (adjust to your real API)  
-  const SUBMIT_ENDPOINT = "/api/annotations";
+  // ────────────────────────────────────────────────────────────  
+  // DOM REFERENCES  
+  // ────────────────────────────────────────────────────────────  
+  const $ = (id) => document.getElementById(id);
 
-  // Maximum canvas dimension (keeps iOS happy — 4096 is safe)  
-  const MAX_CANVAS_DIM = 2048;
-
-  // ── DOM refs ─────────────────────────────────────────────────  
-  const emailInput     = document.getElementById("emailInput");  
-  const fatigueSelect  = document.getElementById("fatigueSelect");
-
-  const clipVideo      = document.getElementById("clipVideo");  
-  const videoOverlay   = document.getElementById("videoOverlay");  
-  const btnReplay      = document.getElementById("btnReplay");  
-  const clipProgress   = document.getElementById("clipProgress");
-
-  const frameCanvas    = document.getElementById("frameCanvas");  
+  const emailInput     = $("emailInput");  
+  const fatigueSelect  = $("fatigueSelect");  
+  const clipVideo      = $("clipVideo");  
+  const videoOverlay   = $("videoOverlay");  
+  const btnReplay      = $("btnReplay");  
+  const clipProgress   = $("clipProgress");  
+  const clipProgressBar = $("clipProgressBar");  
+  const frameCanvas    = $("frameCanvas");  
   const ctx            = frameCanvas.getContext("2d", { willReadFrequently: true });  
-  const canvasWrap     = document.getElementById("canvasWrap");  
-  const statusAnnotate = document.getElementById("statusAnnotate");  
-  const btnClear       = document.getElementById("btnClear");
+  const canvasWrap     = $("canvasWrap");  
+  const statusAnnotate = $("statusAnnotate");  
+  const btnClear       = $("btnClear");  
+  const statusSubmit   = $("statusSubmit");  
+  const btnSubmit      = $("btnSubmit");  
+  const cardConfidence = $("cardConfidence");  
+  const btnConfidence  = $("btnConfidence");  
+  const cardDone       = $("cardDone");  
+  const cardDetails    = $("cardDetails");  
+  const cardVideo      = $("cardVideo");  
+  const cardAnnotate   = $("cardAnnotate");  
+  const cardSubmit     = $("cardSubmit");  
+  const cardError      = $("cardError");  
+  const errorMessage   = $("errorMessage");
 
-  const statusSubmit   = document.getElementById("statusSubmit");  
-  const btnSubmit      = document.getElementById("btnSubmit");
+  // ────────────────────────────────────────────────────────────  
+  // STATE  
+  // ────────────────────────────────────────────────────────────  
+  let clipList          = [];      // array of clip URLs for this participant  
+  let currentClipIndex  = 0;  
+  let frameCaptured     = false;  
+  let lastCapturedFrame = null;    // ImageData backup (survives iOS purge)  
+  let lineStart         = null;    // { x, y } normalised 0-1  
+  let lineEnd           = null;  
+  let isDrawing         = false;  
+  let hasLine           = false;
 
-  const cardConfidence = document.getElementById("cardConfidence");  
-  const btnConfidence  = document.getElementById("btnConfidence");
+  // ────────────────────────────────────────────────────────────  
+  // CSV / CLIP LOADING  
+  // ────────────────────────────────────────────────────────────
 
-  const cardDone       = document.getElementById("cardDone");  
-  const cardDetails    = document.getElementById("cardDetails");  
-  const cardVideo      = document.getElementById("cardVideo");  
-  const cardAnnotate   = document.getElementById("cardAnnotate");  
-  const cardSubmit     = document.getElementById("cardSubmit");
+  /**  
+   * Parse the clips file.  Supports several common formats:  
+   *  
+   *  A) One URL per line  
+   *       clips/clip01.mp4  
+   *       clips/clip02.mp4  
+   *  
+   *  B) CSV with header — columns like:  
+   *       participant,clip_url  
+   *       user@example.com,clips/clip01.mp4  
+   *  
+   *  C) CSV with clip columns:  
+   *       participant,clip1,clip2,clip3  
+   *       user@example.com,clips/a.mp4,clips/b.mp4,clips/c.mp4  
+   *  
+   * Returns an array of URL strings.  
+   */  
+  function parseClipsFile(text, email) {  
+    const lines = text  
+      .split(/\r?\n/)  
+      .map(l => l.trim())  
+      .filter(l => l.length > 0 && !l.startsWith("#"));
 
-  // ── State ────────────────────────────────────────────────────  
-  let currentClipIndex = 0;  
-  let frameCaptured    = false;  
-  let lastCapturedFrame = null;   // ImageData backup for iOS recovery
+    if (lines.length === 0) return [];
 
-  // Drawing state  
-  let lineStart  = null;   // {x, y} normalised 0–1  
-  let lineEnd    = null;  
-  let isDrawing  = false;  
-  let hasLine    = false;
+    // Detect whether first line looks like a header  
+    const firstLine = lines[0].toLowerCase();  
+    const hasHeader = /participant|email|clip|url|video/i.test(firstLine);
 
-  // ── Helpers ──────────────────────────────────────────────────
+    // ── Format A: plain list of URLs (no commas, or single-column) ──  
+    const isPlainList = !lines[0].includes(",") && !hasHeader;  
+    if (isPlainList) {  
+      return lines.filter(l => /\.(mp4|webm|mov|m4v|ogg)/i.test(l));  
+    }
 
-  /** Safe canvas sizing that respects mobile GPU limits */  
+    // ── CSV formats ──  
+    const rows   = lines.map(l => l.split(",").map(c => c.trim()));  
+    const header = hasHeader ? rows.shift() : null;
+
+    if (!header) {  
+      // No header — treat every cell that looks like a URL as a clip  
+      const urls = [];  
+      rows.forEach(row => row.forEach(cell => {  
+        if (/\.(mp4|webm|mov|m4v|ogg)/i.test(cell)) urls.push(cell);  
+      }));  
+      return urls;  
+    }
+
+    // ── With header: find email/participant column and clip columns ──  
+    const hdrLower = header.map(h => h.toLowerCase());
+
+    const emailCol = hdrLower.findIndex(h =>  
+      /email|participant|user/i.test(h)  
+    );
+
+    // Clip columns = everything that isn't the email column, OR columns named clip/url/video  
+    const clipCols = [];  
+    hdrLower.forEach((h, i) => {  
+      if (i === emailCol) return;  
+      // Accept columns named clip*, url*, video*, or just numbered  
+      clipCols.push(i);  
+    });
+
+    // If we have an email column, try to find the participant's row  
+    if (emailCol >= 0 && email) {  
+      const normalEmail = email.toLowerCase().trim();  
+      const participantRow = rows.find(r =>  
+        r[emailCol] && r[emailCol].toLowerCase().trim() === normalEmail  
+      );  
+      if (participantRow) {  
+        return clipCols  
+          .map(i => participantRow[i])  
+          .filter(c => c && c.length > 0 && c !== "-" && c !== "N/A");  
+      }  
+      // Email not found — return empty; caller will show an error  
+      return [];  
+    }
+
+    // No email column — collect all clip URLs from all rows  
+    const urls = [];  
+    rows.forEach(row => {  
+      clipCols.forEach(i => {  
+        const cell = row[i];  
+        if (cell && cell.length > 0 && /\.(mp4|webm|mov|m4v|ogg)/i.test(cell)) {  
+          urls.push(cell);  
+        }  
+      });  
+    });  
+    return urls;  
+  }
+
+  async function fetchClipList(email) {  
+    try {  
+      const resp = await fetch(CLIPS_CSV_PATH, { cache: "no-cache" });  
+      if (!resp.ok) throw new Error(`HTTP ${resp.status} loading ${CLIPS_CSV_PATH}`);  
+      const text = await resp.text();  
+      const clips = parseClipsFile(text, email);  
+      return clips;  
+    } catch (err) {  
+      console.error("[fetchClipList]", err);  
+      throw err;  
+    }  
+  }
+
+  // ────────────────────────────────────────────────────────────  
+  // CANVAS HELPERS  
+  // ────────────────────────────────────────────────────────────
+
   function sizeCanvas(srcW, srcH) {  
-    let w = srcW;  
-    let h = srcH;  
-    const maxPixels = MAX_CANVAS_DIM * MAX_CANVAS_DIM;
-
-    if (w * h > maxPixels || w > MAX_CANVAS_DIM || h > MAX_CANVAS_DIM) {  
-      const scale = Math.min(MAX_CANVAS_DIM / w, MAX_CANVAS_DIM / h);  
-      w = Math.floor(w * scale);  
-      h = Math.floor(h * scale);  
+    let w = srcW, h = srcH;  
+    if (w > MAX_CANVAS_DIM || h > MAX_CANVAS_DIM) {  
+      const s = Math.min(MAX_CANVAS_DIM / w, MAX_CANVAS_DIM / h);  
+      w = Math.floor(w * s);  
+      h = Math.floor(h * s);  
     }  
-    frameCanvas.width  = w;  
-    frameCanvas.height = h;  
+    // Avoid zero dimensions  
+    frameCanvas.width  = Math.max(w, 1);  
+    frameCanvas.height = Math.max(h, 1);  
   }
 
-  /** Draw the stored frame + any annotation line */  
   function redrawCanvas() {  
-    if (!lastCapturedFrame) return;
-
-    // Put the saved image data back (handles iOS canvas purge)  
-    ctx.putImageData(lastCapturedFrame, 0, 0);
-
-    if (lineStart && lineEnd) {  
-      drawLineOnCanvas(lineStart, lineEnd);  
-    }  
+    if (!lastCapturedFrame) return;  
+    ctx.putImageData(lastCapturedFrame, 0, 0);  
+    if (lineStart && lineEnd) drawLineOnCanvas(lineStart, lineEnd);  
   }
 
-  /** Draw a line using normalised coords */  
   function drawLineOnCanvas(start, end) {  
-    const w = frameCanvas.width;  
-    const h = frameCanvas.height;
-
+    const w = frameCanvas.width, h = frameCanvas.height;  
     ctx.save();  
     ctx.strokeStyle = "#00ff66";  
-    ctx.lineWidth   = Math.max(2, Math.round(w / 200));  
+    ctx.lineWidth   = Math.max(2, Math.round(w / 180));  
     ctx.lineCap     = "round";  
-    ctx.shadowColor = "rgba(0,0,0,.6)";  
-    ctx.shadowBlur  = 4;
-
+    ctx.shadowColor = "rgba(0,0,0,.55)";  
+    ctx.shadowBlur  = 5;  
     ctx.beginPath();  
     ctx.moveTo(start.x * w, start.y * h);  
     ctx.lineTo(end.x * w,   end.y * h);  
@@ -106,99 +198,155 @@
     ctx.restore();  
   }
 
-  /** Get normalised coords from a pointer/touch event on the canvas */  
   function canvasCoords(e) {  
-    const rect = frameCanvas.getBoundingClientRect();  
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;  
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;  
+    const r = frameCanvas.getBoundingClientRect();  
+    const cx = e.touches ? e.touches[0].clientX : e.clientX;  
+    const cy = e.touches ? e.touches[0].clientY : e.clientY;  
     return {  
-      x: (clientX - rect.left) / rect.width,  
-      y: (clientY - rect.top)  / rect.height  
+      x: Math.max(0, Math.min(1, (cx - r.left) / r.width)),  
+      y: Math.max(0, Math.min(1, (cy - r.top)  / r.height))  
     };  
   }
 
-  /** Get coords from a touch-end (uses changedTouches) */  
   function canvasCoordsEnd(e) {  
-    const rect = frameCanvas.getBoundingClientRect();  
-    const clientX = e.changedTouches ? e.changedTouches[0].clientX : e.clientX;  
-    const clientY = e.changedTouches ? e.changedTouches[0].clientY : e.clientY;  
+    const r  = frameCanvas.getBoundingClientRect();  
+    const cx = e.changedTouches ? e.changedTouches[0].clientX : e.clientX;  
+    const cy = e.changedTouches ? e.changedTouches[0].clientY : e.clientY;  
     return {  
-      x: (clientX - rect.left) / rect.width,  
-      y: (clientY - rect.top)  / rect.height  
+      x: Math.max(0, Math.min(1, (cx - r.left) / r.width)),  
+      y: Math.max(0, Math.min(1, (cy - r.top)  / r.height))  
     };  
   }
 
-  /** Capture the current video frame to canvas + backup ImageData */  
-  function captureFrame() {  
-    if (frameCaptured) return;           // already done
+  // ────────────────────────────────────────────────────────────  
+  // FRAME CAPTURE (the heart of the mobile fix)  
+  // ────────────────────────────────────────────────────────────
 
+  function captureFrame() {  
+    if (frameCaptured) return;  
     const vw = clipVideo.videoWidth  || 640;  
     const vh = clipVideo.videoHeight || 360;  
     sizeCanvas(vw, vh);
 
     try {  
-      ctx.drawImage(clipVideo, 0, 0, frameCanvas.width, frameCanvas.height);  
+      ctx.drawImage(clipVideo, 0, 0, frameCanvas.width, frameCanvas.height);
+
+      // Verify we actually got pixels (not a blank frame)  
+      const sample = ctx.getImageData(  
+        Math.floor(frameCanvas.width / 2),  
+        Math.floor(frameCanvas.height / 2),  
+        1, 1  
+      ).data;  
+      const isBlank = (sample[0] === 0 && sample[1] === 0 &&  
+                       sample[2] === 0 && sample[3] === 0);
+
+      if (isBlank) {  
+        console.warn("[capture] got blank frame — will retry");  
+        return; // don't set frameCaptured; timeupdate will retry  
+      }
+
+      // Save full ImageData as backup (iOS can purge the canvas buffer)  
       lastCapturedFrame = ctx.getImageData(0, 0, frameCanvas.width, frameCanvas.height);  
       frameCaptured = true;
 
-      statusAnnotate.textContent = "Final frame captured. Draw your incision line.";  
+      statusAnnotate.textContent = "✓ Final frame captured. Draw your incision line.";  
       statusAnnotate.className   = "status-bar success";  
       btnClear.disabled = false;
 
       console.log("[capture] frame saved", frameCanvas.width, "×", frameCanvas.height);  
     } catch (err) {  
-      console.warn("[capture] drawImage failed, will retry:", err);  
+      console.warn("[capture] drawImage failed:", err);  
     }  
   }
 
-  // ── Video lifecycle ──────────────────────────────────────────
+  /**  
+   * Fallback capture: if drawImage from video keeps failing (iOS),  
+   * create an off-screen <canvas>, seek video, and try there.  
+   */  
+  function fallbackCapture() {  
+    if (frameCaptured) return;  
+    console.log("[fallback] attempting OffscreenCanvas / temp canvas capture");
+
+    const vw = clipVideo.videoWidth  || 640;  
+    const vh = clipVideo.videoHeight || 360;  
+    sizeCanvas(vw, vh);
+
+    const tmp = document.createElement("canvas");  
+    tmp.width  = frameCanvas.width;  
+    tmp.height = frameCanvas.height;  
+    const tmpCtx = tmp.getContext("2d");
+
+    try {  
+      tmpCtx.drawImage(clipVideo, 0, 0, tmp.width, tmp.height);  
+      const imgData = tmpCtx.getImageData(0, 0, tmp.width, tmp.height);
+
+      const sample = imgData.data;  
+      let nonZero = false;  
+      for (let i = 0; i < Math.min(sample.length, 400); i += 4) {  
+        if (sample[i] || sample[i+1] || sample[i+2]) { nonZero = true; break; }  
+      }
+
+      if (nonZero) {  
+        ctx.putImageData(imgData, 0, 0);  
+        lastCapturedFrame = imgData;  
+        frameCaptured = true;  
+        statusAnnotate.textContent = "✓ Final frame captured. Draw your incision line.";  
+        statusAnnotate.className   = "status-bar success";  
+        btnClear.disabled = false;  
+        console.log("[fallback] success");  
+      }  
+    } catch (err) {  
+      console.warn("[fallback] failed:", err);  
+    }  
+  }
+
+  // ────────────────────────────────────────────────────────────  
+  // VIDEO LIFECYCLE  
+  // ────────────────────────────────────────────────────────────
 
   function loadClip(index) {  
-    if (index >= CLIP_URLS.length) {  
-      showDone();  
-      return;  
-    }
+    if (index >= clipList.length) { showDone(); return; }
 
-    // Reset state  
     frameCaptured     = false;  
     lastCapturedFrame = null;  
-    lineStart  = null;  
-    lineEnd    = null;  
-    hasLine    = false;  
-    isDrawing  = false;
+    lineStart = lineEnd = null;  
+    hasLine = isDrawing = false;
 
-    btnReplay.disabled  = true;  
-    btnSubmit.disabled  = true;  
-    btnClear.disabled   = true;
+    btnReplay.disabled = btnSubmit.disabled = btnClear.disabled = true;
 
     statusAnnotate.textContent = "The final frame appears below shortly.";  
     statusAnnotate.className   = "status-bar info";  
     statusSubmit.textContent   = "Draw the incision on the frozen frame to enable submission.";  
     statusSubmit.className     = "status-bar warn";
 
-    ctx.clearRect(0, 0, frameCanvas.width, frameCanvas.height);  
-    clipProgress.textContent = `Clip ${index + 1} of ${CLIP_URLS.length}`;
+    ctx.clearRect(0, 0, frameCanvas.width, frameCanvas.height);
+
+    clipProgress.textContent   = `Clip ${index + 1} of ${clipList.length}`;  
+    clipProgressBar.style.width = `${((index) / clipList.length) * 100}%`;
 
     videoOverlay.textContent = "Loading Clip…";  
     videoOverlay.classList.remove("hidden");
 
-    clipVideo.src = CLIP_URLS[index];  
+    clipVideo.removeAttribute("src");  
+    clipVideo.load();                        // reset
+
+    clipVideo.src = clipList[index];  
     clipVideo.load();  
   }
 
-  /* ── Video events ── */
+  // ── Video events ──
 
   clipVideo.addEventListener("loadedmetadata", () => {  
-    console.log("[video] metadata loaded",  
-      clipVideo.videoWidth, "×", clipVideo.videoHeight,  
-      "duration", clipVideo.duration);  
+    console.log("[video] meta", clipVideo.videoWidth, "×", clipVideo.videoHeight,  
+                "dur", clipVideo.duration);  
   });
 
-  clipVideo.addEventListener("canplaythrough", () => {  
-    videoOverlay.classList.add("hidden");  
-    clipVideo.play().catch(err => {  
-      console.warn("[video] autoplay blocked:", err);  
-      videoOverlay.textContent = "Tap to play";  
+  clipVideo.addEventListener("canplaythrough", function onReady() {  
+    videoOverlay.classList.add("hidden");
+
+    clipVideo.play().catch(() => {  
+      // Autoplay blocked — show tap-to-play  
+      videoOverlay.textContent = "▶ Tap to Play";  
       videoOverlay.classList.remove("hidden");  
       videoOverlay.style.pointerEvents = "auto";  
       videoOverlay.onclick = () => {  
@@ -211,140 +359,151 @@
   });
 
   /*  
-   * KEY FIX #1 — Continuously capture frames during playback.  
-   * On iOS Safari the decoded frame may be released once the video  
-   * pauses or ends, so the LAST frame drawn here acts as our fallback.  
-   * We throttle to ~4 fps to avoid performance issues on low-end devices.  
+   * FIX #1 — Continuously draw frames during playback.  
+   * iOS Safari may release the decoded frame once the video is paused  
+   * or ended, so the last successfully drawn frame acts as fallback.  
+   * Throttled to ~4 fps to be gentle on low-end phones.  
    */  
-  let lastCaptureTime = 0;  
+  let lastDrawTime = 0;  
   clipVideo.addEventListener("timeupdate", () => {  
+    if (frameCaptured) return;  
     const now = performance.now();  
-    if (now - lastCaptureTime < 250) return;   // throttle  
-    lastCaptureTime = now;
-
-    if (frameCaptured) return;
+    if (now - lastDrawTime < 250) return;  
+    lastDrawTime = now;
 
     const vw = clipVideo.videoWidth  || 640;  
-    const vh = clipVideo.videoHeight || 360;
-
-    // Ensure canvas is sized  
-    if (frameCanvas.width !== vw || frameCanvas.height !== vh) {  
-      sizeCanvas(vw, vh);  
-    }
+    const vh = clipVideo.videoHeight || 360;  
+    if (frameCanvas.width < 2 || frameCanvas.height < 2) sizeCanvas(vw, vh);
 
     try {  
       ctx.drawImage(clipVideo, 0, 0, frameCanvas.width, frameCanvas.height);  
-    } catch (_) { /* ignore occasional security errors */ }
+    } catch (_) {}
 
     /*  
-     * KEY FIX #2 — Freeze ~150 ms before the end so the frame  
-     * is still decoded when we snapshot.  
+     * FIX #2 — Freeze ~200 ms before the end so the decoded frame  
+     * is still available in the video element's buffer.  
      */  
-    if (clipVideo.duration && clipVideo.duration - clipVideo.currentTime < 0.2) {  
+    if (clipVideo.duration && (clipVideo.duration - clipVideo.currentTime) < 0.25) {  
       clipVideo.pause();  
-      // Use a short timeout so the browser finishes decoding the frame  
-      setTimeout(() => captureFrame(), 80);  
+      // Small delay so browser finishes decoding  
+      setTimeout(() => {  
+        captureFrame();  
+        if (!frameCaptured) fallbackCapture();  
+      }, 120);  
     }  
   });
 
-  /*  
-   * Fallback: if `timeupdate` didn't catch the end (e.g. very short clip)  
-   */  
   clipVideo.addEventListener("pause", () => {  
-    if (!frameCaptured && clipVideo.currentTime > 0) {  
-      setTimeout(() => captureFrame(), 100);  
-    }  
     btnReplay.disabled = false;  
+    if (!frameCaptured && clipVideo.currentTime > 0) {  
+      setTimeout(() => {  
+        captureFrame();  
+        if (!frameCaptured) fallbackCapture();  
+      }, 150);  
+    }  
   });
 
   clipVideo.addEventListener("ended", () => {  
-    if (!frameCaptured) {  
-      // Seek back slightly and capture  
-      try {  
-        clipVideo.currentTime = Math.max(0, clipVideo.duration - 0.05);  
-      } catch (_) {}  
-      setTimeout(() => captureFrame(), 150);  
-    }  
     btnReplay.disabled = false;  
+    if (!frameCaptured) {  
+      // Seek slightly back and try  
+      try { clipVideo.currentTime = Math.max(0, clipVideo.duration - 0.08); } catch (_) {}  
+      setTimeout(() => {  
+        captureFrame();  
+        if (!frameCaptured) {  
+          // one more try after a longer delay  
+          setTimeout(() => {  
+            captureFrame();  
+            if (!frameCaptured) fallbackCapture();  
+            if (!frameCaptured) {  
+              statusAnnotate.textContent = "⚠ Could not capture frame. Try replaying.";  
+              statusAnnotate.className   = "status-bar error";  
+            }  
+          }, 500);  
+        }  
+      }, 200);  
+    }  
   });
 
-  // ── Replay ───────────────────────────────────────────────────  
+  clipVideo.addEventListener("error", () => {  
+    videoOverlay.textContent = "❌ Failed to load clip";  
+    videoOverlay.classList.remove("hidden");  
+    console.error("[video] error", clipVideo.error);  
+  });
+
+  // ── Replay ──  
   btnReplay.addEventListener("click", () => {  
-    // Reset annotation state  
     frameCaptured     = false;  
     lastCapturedFrame = null;  
-    lineStart  = null;  
-    lineEnd    = null;  
-    hasLine    = false;
-
-    btnSubmit.disabled = true;  
-    btnClear.disabled  = true;
+    lineStart = lineEnd = null;  
+    hasLine = isDrawing = false;  
+    btnSubmit.disabled = btnClear.disabled = true;
 
     statusAnnotate.textContent = "The final frame appears below shortly.";  
     statusAnnotate.className   = "status-bar info";  
     statusSubmit.textContent   = "Draw the incision on the frozen frame to enable submission.";  
     statusSubmit.className     = "status-bar warn";
 
-    ctx.clearRect(0, 0, frameCanvas.width, frameCanvas.height);
-
+    ctx.clearRect(0, 0, frameCanvas.width, frameCanvas.height);  
     clipVideo.currentTime = 0;  
     clipVideo.play().catch(() => {});  
   });
 
-  // ── Canvas drawing (pointer + touch) ─────────────────────────
+  // ────────────────────────────────────────────────────────────  
+  // CANVAS DRAWING (mouse + touch)  
+  // ────────────────────────────────────────────────────────────
 
-  function onPointerDown(e) {  
+  function onDown(e) {  
     if (!frameCaptured) return;  
     e.preventDefault();  
     isDrawing = true;  
     lineStart = canvasCoords(e);  
     lineEnd   = null;  
     hasLine   = false;  
-    redrawCanvas();           // clear previous line  
+    redrawCanvas();  
   }
 
-  function onPointerMove(e) {  
+  function onMove(e) {  
     if (!isDrawing) return;  
     e.preventDefault();  
     lineEnd = canvasCoords(e);  
     redrawCanvas();  
   }
 
-  function onPointerUp(e) {  
+  function onUp(e) {  
     if (!isDrawing) return;  
     e.preventDefault();  
     isDrawing = false;  
     lineEnd = canvasCoordsEnd(e);
 
-    // Require minimum length  
     if (lineStart && lineEnd) {  
       const dx = lineEnd.x - lineStart.x;  
       const dy = lineEnd.y - lineStart.y;  
       if (Math.sqrt(dx * dx + dy * dy) > 0.01) {  
         hasLine = true;  
         btnSubmit.disabled = false;  
-        statusSubmit.textContent = "Annotation ready. You may submit.";  
+        statusSubmit.textContent = "✓ Annotation ready. You may submit.";  
         statusSubmit.className   = "status-bar success";  
       }  
     }  
     redrawCanvas();  
   }
 
-  // Mouse events  
-  frameCanvas.addEventListener("mousedown", onPointerDown);  
-  frameCanvas.addEventListener("mousemove", onPointerMove);  
-  frameCanvas.addEventListener("mouseup",   onPointerUp);  
-  frameCanvas.addEventListener("mouseleave", (e) => { if (isDrawing) onPointerUp(e); });
+  // Mouse  
+  frameCanvas.addEventListener("mousedown",  onDown);  
+  frameCanvas.addEventListener("mousemove",  onMove);  
+  frameCanvas.addEventListener("mouseup",    onUp);  
+  frameCanvas.addEventListener("mouseleave", e => { if (isDrawing) onUp(e); });
 
-  // Touch events (mobile)  
-  frameCanvas.addEventListener("touchstart", onPointerDown, { passive: false });  
-  frameCanvas.addEventListener("touchmove",  onPointerMove, { passive: false });  
-  frameCanvas.addEventListener("touchend",   onPointerUp,   { passive: false });  
-  frameCanvas.addEventListener("touchcancel", (e) => { if (isDrawing) onPointerUp(e); });
+  // Touch — passive: false is CRITICAL so preventDefault works  
+  frameCanvas.addEventListener("touchstart",  onDown, { passive: false });  
+  frameCanvas.addEventListener("touchmove",   onMove, { passive: false });  
+  frameCanvas.addEventListener("touchend",    onUp,   { passive: false });  
+  frameCanvas.addEventListener("touchcancel", e => { if (isDrawing) onUp(e); });
 
   /*  
-   * KEY FIX #3 — iOS can purge GPU-backed canvases when memory is low  
-   * or the page is backgrounded.  On visibility change we re-stamp.  
+   * FIX #3 — Re-stamp canvas when iOS purges GPU memory  
+   * (happens on background/tab switch/memory pressure).  
    */  
   document.addEventListener("visibilitychange", () => {  
     if (!document.hidden && lastCapturedFrame) {  
@@ -352,55 +511,47 @@
     }  
   });
 
-  // Also re-draw on resize (orientation change)  
   window.addEventListener("resize", () => {  
-    if (lastCapturedFrame) {  
-      requestAnimationFrame(() => redrawCanvas());  
-    }  
+    if (lastCapturedFrame) requestAnimationFrame(() => redrawCanvas());  
   });
 
-  // ── Clear ────────────────────────────────────────────────────  
+  // Prevent pull-to-refresh while touching the canvas area  
+  canvasWrap.addEventListener("touchmove", e => e.preventDefault(), { passive: false });
+
+  // ── Clear ──  
   btnClear.addEventListener("click", () => {  
-    lineStart = null;  
-    lineEnd   = null;  
-    hasLine   = false;  
-    isDrawing = false;  
-    btnSubmit.disabled = true;
-
+    lineStart = lineEnd = null;  
+    hasLine = isDrawing = false;  
+    btnSubmit.disabled = true;  
     statusSubmit.textContent = "Draw the incision on the frozen frame to enable submission.";  
-    statusSubmit.className   = "status-bar warn";
-
+    statusSubmit.className   = "status-bar warn";  
     redrawCanvas();  
   });
 
-  // ── Submit ───────────────────────────────────────────────────  
+  // ────────────────────────────────────────────────────────────  
+  // SUBMIT  
+  // ────────────────────────────────────────────────────────────
+
   btnSubmit.addEventListener("click", async () => {  
     const email   = emailInput.value.trim();  
     const fatigue = fatigueSelect.value;
 
-    if (!email) { alert("Please enter your email."); emailInput.focus(); return; }  
+    if (!email)   { alert("Please enter your email."); emailInput.focus(); return; }  
     if (!fatigue) { alert("Please select your fatigue level."); return; }  
     if (!hasLine) { alert("Please draw an incision line first."); return; }
 
-    btnSubmit.disabled  = true;  
-    btnSubmit.textContent = "Sending…";
+    btnSubmit.disabled    = true;  
+    btnSubmit.innerHTML   = '<span class="spinner"></span> Sending…';
 
     const payload = {  
       email,  
-      fatigue:   Number(fatigue),  
-      clipIndex: currentClipIndex,  
-      clipUrl:   CLIP_URLS[currentClipIndex],  
-      line: {  
-        start: lineStart,  
-        end:   lineEnd  
-      },  
-      canvasSize: {  
-        w: frameCanvas.width,  
-        h: frameCanvas.height  
-      },  
-      // Include a PNG data-URL of the annotated frame  
-      frameImage: frameCanvas.toDataURL("image/png"),  
-      timestamp: new Date().toISOString()  
+      fatigue:    Number(fatigue),  
+      clipIndex:  currentClipIndex,  
+      clipUrl:    clipList[currentClipIndex],  
+      line:       { start: lineStart, end: lineEnd },  
+      canvasSize: { w: frameCanvas.width, h: frameCanvas.height },  
+      frameImage: (() => { try { return frameCanvas.toDataURL("image/png"); } catch (_) { return null; } })(),  
+      timestamp:  new Date().toISOString()  
     };
 
     try {  
@@ -408,37 +559,38 @@
         method: "POST",  
         headers: { "Content-Type": "application/json" },  
         body: JSON.stringify(payload)  
-      });
-
-      if (!res.ok) throw new Error(`Server responded ${res.status}`);  
-      console.log("[submit] success for clip", currentClipIndex);  
+      });  
+      if (!res.ok) throw new Error(`Server ${res.status}`);  
+      console.log("[submit] OK clip", currentClipIndex);  
     } catch (err) {  
-      console.warn("[submit] network send failed — storing locally:", err);  
-      // Fallback: store in localStorage so data isn't lost  
-      const key = `annotation_${Date.now()}`;  
-      try { localStorage.setItem(key, JSON.stringify(payload)); } catch (_) {}  
+      console.warn("[submit] network error — saving locally:", err);  
+      try {  
+        localStorage.setItem(`annot_${Date.now()}`, JSON.stringify(payload));  
+      } catch (_) {}  
     }
 
-    btnSubmit.textContent = "Submit to Investigator and Next Clip ➜";
-
-    // Show confidence card  
+    btnSubmit.innerHTML = "Submit to Investigator and Next Clip ➜";  
     cardConfidence.classList.remove("hidden");  
     cardConfidence.scrollIntoView({ behavior: "smooth" });  
   });
 
-  // ── Confidence ───────────────────────────────────────────────  
-  document.querySelectorAll('input[name="confidence"]').forEach(radio => {  
-    radio.addEventListener("change", () => { btnConfidence.disabled = false; });  
+  // ────────────────────────────────────────────────────────────  
+  // CONFIDENCE  
+  // ────────────────────────────────────────────────────────────
+
+  document.querySelectorAll('input[name="confidence"]').forEach(r => {  
+    r.addEventListener("change", () => { btnConfidence.disabled = false; });  
   });
 
   btnConfidence.addEventListener("click", async () => {  
-    const selected = document.querySelector('input[name="confidence"]:checked');  
-    if (!selected) return;
+    const sel = document.querySelector('input[name="confidence"]:checked');  
+    if (!sel) return;
 
     const payload = {  
       email:      emailInput.value.trim(),  
       clipIndex:  currentClipIndex,  
-      confidence: Number(selected.value),  
+      clipUrl:    clipList[currentClipIndex],  
+      confidence: Number(sel.value),  
       timestamp:  new Date().toISOString()  
     };
 
@@ -453,14 +605,14 @@
       try { localStorage.setItem(`conf_${Date.now()}`, JSON.stringify(payload)); } catch (_) {}  
     }
 
-    // Reset confidence radios  
     document.querySelectorAll('input[name="confidence"]').forEach(r => r.checked = false);  
     btnConfidence.disabled = true;  
     cardConfidence.classList.add("hidden");
 
-    // Advance to next clip  
     currentClipIndex++;  
-    if (currentClipIndex < CLIP_URLS.length) {  
+    clipProgressBar.style.width = `${(currentClipIndex / clipList.length) * 100}%`;
+
+    if (currentClipIndex < clipList.length) {  
       loadClip(currentClipIndex);  
       window.scrollTo({ top: 0, behavior: "smooth" });  
     } else {  
@@ -468,16 +620,72 @@
     }  
   });
 
-  // ── Done ─────────────────────────────────────────────────────  
+  // ────────────────────────────────────────────────────────────  
+  // DONE / ERROR  
+  // ────────────────────────────────────────────────────────────
+
   function showDone() {  
-    cardDetails.classList.add("hidden");  
-    cardVideo.classList.add("hidden");  
-    cardAnnotate.classList.add("hidden");  
-    cardSubmit.classList.add("hidden");  
-    cardConfidence.classList.add("hidden");  
+    [cardDetails, cardVideo, cardAnnotate, cardSubmit, cardConfidence].forEach(  
+      c => c.classList.add("hidden")  
+    );  
+    clipProgressBar.style.width = "100%";  
     cardDone.classList.remove("hidden");  
   }
 
-  // ── Boot ─────────────────────────────────────────────────────  
-  loadClip(0);  
+  function showError(msg) {  
+    errorMessage.textContent = msg;  
+    cardError.classList.remove("hidden");  
+  }
+
+  // ────────────────────────────────────────────────────────────  
+  // BOOT  
+  // ────────────────────────────────────────────────────────────
+
+  async function init() {  
+    clipProgress.textContent = "Loading clip list…";
+
+    try {  
+      // First try without email filter (gets all clips)  
+      let clips = await fetchClipList(null);
+
+      // If the CSV is participant-mapped, we'll need the email  
+      if (clips.length === 0) {  
+        const email = emailInput.value.trim();  
+        if (email) {  
+          clips = await fetchClipList(email);  
+        }  
+      }
+
+      if (clips.length === 0) {  
+        // Wait for email entry, then reload clip list  
+        clipProgress.textContent = "Enter your email above, then clips will load.";  
+        emailInput.addEventListener("change", async () => {  
+          const email = emailInput.value.trim();  
+          if (!email) return;  
+          try {  
+            clips = await fetchClipList(email);  
+            if (clips.length === 0) {  
+              showError("No clips found for this email. Please check and try again.");  
+              return;  
+            }  
+            clipList = clips;  
+            loadClip(0);  
+          } catch (e) {  
+            showError("Failed to load clips: " + e.message);  
+          }  
+        });  
+        return;  
+      }
+
+      clipList = clips;  
+      console.log("[init] loaded", clipList.length, "clips:", clipList);  
+      loadClip(0);
+
+    } catch (err) {  
+      console.error("[init]", err);  
+      showError("Failed to load clip list. Check that " + CLIPS_CSV_PATH + " is accessible.");  
+    }  
+  }
+
+  init();  
 })();  
