@@ -1,141 +1,363 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Cholecystectomy Incision Annotation - Phase 02</title>
-  <link rel="stylesheet" href="styles.css" />
-</head>
+<!DOCTYPE html>  
+<html lang="en">  
+<head>  
+  <meta charset="UTF-8" />  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />  
+  <title>Cholecystectomy Incision Annotation - Phase 02</title>  
+  <style>  
+    /* ── Reset ── */  
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {  
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;  
+      background: #f4f6f8;  
+      color: #1e293b;  
+      line-height: 1.5;  
+      padding: 16px;  
+      -webkit-text-size-adjust: 100%;  
+    }
+
+    h1 {  
+      font-size: 1.35rem;  
+      text-align: center;  
+      margin-bottom: 4px;  
+    }
+
+    .subtitle {  
+      text-align: center;  
+      font-size: 0.85rem;  
+      color: #64748b;  
+      margin-bottom: 20px;  
+      max-width: 600px;  
+      margin-left: auto;  
+      margin-right: auto;  
+    }
+
+    /* ── Cards ── */  
+    .card {  
+      background: #fff;  
+      border-radius: 12px;  
+      box-shadow: 0 1px 3px rgba(0,0,0,.1);  
+      padding: 20px;  
+      margin-bottom: 16px;  
+      max-width: 700px;  
+      margin-left: auto;  
+      margin-right: auto;  
+    }
+
+    .card h2 {  
+      font-size: 1rem;  
+      margin-bottom: 12px;  
+      color: #334155;  
+    }
+
+    .card.hidden { display: none; }
+
+    /* ── Form elements ── */  
+    label {  
+      display: block;  
+      font-size: 0.85rem;  
+      font-weight: 600;  
+      margin-bottom: 4px;  
+      color: #475569;  
+    }
+
+    input[type="email"], select {  
+      width: 100%;  
+      padding: 10px 12px;  
+      border: 1px solid #cbd5e1;  
+      border-radius: 8px;  
+      font-size: 1rem;  
+      margin-bottom: 12px;  
+      -webkit-appearance: none;  
+    }
+
+    input[type="email"]:focus, select:focus {  
+      outline: none;  
+      border-color: #3b82f6;  
+      box-shadow: 0 0 0 3px rgba(59,130,246,.15);  
+    }
+
+    /* ── Buttons ── */  
+    .btn {  
+      display: inline-flex;  
+      align-items: center;  
+      justify-content: center;  
+      gap: 6px;  
+      padding: 10px 20px;  
+      border: none;  
+      border-radius: 8px;  
+      font-size: 0.9rem;  
+      font-weight: 600;  
+      cursor: pointer;  
+      transition: background .2s, opacity .2s;  
+      -webkit-tap-highlight-color: transparent;  
+    }
+
+    .btn:disabled {  
+      opacity: .45;  
+      cursor: not-allowed;  
+    }
+
+    .btn-primary   { background: #3b82f6; color: #fff; }  
+    .btn-primary:hover:not(:disabled) { background: #2563eb; }
+
+    .btn-secondary { background: #e2e8f0; color: #334155; }  
+    .btn-secondary:hover:not(:disabled) { background: #cbd5e1; }
+
+    .btn-danger    { background: #ef4444; color: #fff; }  
+    .btn-danger:hover:not(:disabled) { background: #dc2626; }
+
+    .btn-success   { background: #22c55e; color: #fff; }  
+    .btn-success:hover:not(:disabled) { background: #16a34a; }
+
+    .btn-block { width: 100%; }
+
+    /* ── Video ── */  
+    .video-wrap {  
+      position: relative;  
+      width: 100%;  
+      border-radius: 8px;  
+      overflow: hidden;  
+      background: #000;  
+      margin-bottom: 12px;  
+    }
+
+    .video-wrap video {  
+      display: block;  
+      width: 100%;  
+      height: auto;  
+    }
+
+    #videoOverlay {  
+      position: absolute;  
+      inset: 0;  
+      display: flex;  
+      align-items: center;  
+      justify-content: center;  
+      background: rgba(0,0,0,.45);  
+      color: #fff;  
+      font-size: 1.1rem;  
+      font-weight: 600;  
+      pointer-events: none;  
+    }
+
+    #videoOverlay.hidden { display: none; }
+
+    /* ── Canvas ── */  
+    .canvas-wrap {  
+      position: relative;  
+      width: 100%;  
+      border-radius: 8px;  
+      overflow: hidden;  
+      background: #1e293b;  
+      margin-bottom: 8px;  
+      touch-action: none;          /* ← critical for mobile drawing */  
+      -webkit-user-select: none;  
+      user-select: none;  
+    }
+
+    .canvas-wrap canvas {  
+      display: block;  
+      width: 100%;  
+      height: auto;  
+    }
+
+    .canvas-hint {  
+      font-size: 0.8rem;  
+      color: #94a3b8;  
+      text-align: center;  
+      margin-bottom: 12px;  
+    }
+
+    /* ── Status ── */  
+    .status-bar {  
+      display: flex;  
+      align-items: center;  
+      gap: 8px;  
+      padding: 8px 12px;  
+      border-radius: 8px;  
+      font-size: 0.85rem;  
+      margin-bottom: 12px;  
+    }
+
+    .status-bar.info    { background: #eff6ff; color: #1d4ed8; }  
+    .status-bar.success { background: #f0fdf4; color: #15803d; }  
+    .status-bar.warn    { background: #fffbeb; color: #b45309; }
+
+    /* ── Confidence radio group ── */  
+    .radio-group {  
+      display: flex;  
+      flex-wrap: wrap;  
+      gap: 8px;  
+      margin: 12px 0;  
+    }
+
+    .radio-group label {  
+      display: flex;  
+      align-items: center;  
+      gap: 6px;  
+      font-weight: 400;  
+      font-size: 0.85rem;  
+      cursor: pointer;  
+      padding: 6px 12px;  
+      border: 1px solid #e2e8f0;  
+      border-radius: 8px;  
+      transition: background .15s;  
+    }
+
+    .radio-group input[type="radio"] { accent-color: #3b82f6; }  
+    .radio-group label:has(input:checked) {  
+      background: #eff6ff;  
+      border-color: #93c5fd;  
+    }
+
+    /* ── Progress ── */  
+    .progress-text {  
+      text-align: center;  
+      font-size: 0.8rem;  
+      color: #64748b;  
+      margin-bottom: 12px;  
+    }
+
+    /* ── Done screen ── */  
+    .done-screen {  
+      text-align: center;  
+      padding: 40px 20px;  
+    }
+
+    .done-screen h2 { font-size: 1.25rem; margin-bottom: 8px; }  
+    .done-screen p  { color: #64748b; }
+
+    /* ── Utility ── */  
+    .flex-row { display: flex; gap: 8px; flex-wrap: wrap; }  
+  </style>  
+</head>  
 <body>
-  <main class="layout">
-    <header class="layout__header">
-      <h1>Cholecystectomy Incision Annotation - Phase 02</h1>
-      <p>
-        Review the assigned operative clip, then draw the incision line on the frozen final frame.
-        When you submit, your annotation is sent directly to the study team.
-      </p>
-    </header>
 
-    <section id="participantCard" class="card">
-      <header class="card__header">
-        <h2>1. Participant Details</h2>
-      </header>
-      <div class="card__body card__body--stack">
-        <label class="field">
-          <span class="field__label">Participant Email</span>
-          <input
-            id="participantIdInput"
-            class="field__control"
-            type="text"
-            inputmode="text"
-            autocomplete="off"
-            placeholder="e.g., example@example.com"
-          />
-        </label>
-        <p class="help" id="participantIdStatus">
-          Enter your email. This is required before submitting.
-        </p>
-        <label class="field">
-          <span class="field__label">How are you feeling right now?</span>
-          <select id="fatigueInput" class="field__control">
-            <option value="">-- Select --</option>
-            <option value="1">1 - Fully alert</option>
-            <option value="2">2 - Very lively</option>
-            <option value="3">3 - Okay, fresh</option>
-            <option value="4">4 - A little tired</option>
-            <option value="5">5 - Moderately tired</option>
-            <option value="6">6 - Very tired</option>
-            <option value="7">7 - Completely exhausted</option>
-          </select>
-        </label>
-      </div>
-    </section>
+  <h1>Cholecystectomy Incision Annotation – Phase 02</h1>  
+  <p class="subtitle">  
+    Review the assigned operative clip, then draw the incision line on the frozen final frame.  
+    When you submit, your annotation is sent directly to the study team.  
+  </p>
 
-    <section id="videoCard" class="card">
-      <header class="card__header card__header--space">
-        <h2 id="clipLabel">Loading Clip...</h2>
-        <button id="replayBtn" type="button" class="secondary" disabled>Replay Clip</button>
-      </header>
-      <div class="card__body">
-        <div class="video-shell">
-          <video
-            id="caseVideo"
-            playsinline
-            webkit-playsinline
-            crossorigin="anonymous"
-          ></video>
-        </div>
-        <p class="help" id="videoStatus">Initializing...</p>
-      </div>
-    </section>
+  <!-- ════════════════════════════════════════════  
+       1. PARTICIPANT DETAILS  
+       ════════════════════════════════════════════ -->  
+  <div class="card" id="cardDetails">  
+    <h2>1. Participant Details</h2>
 
-    <section id="canvasCard" class="card">
-      <header class="card__header card__header--space">
-        <h2>3. Annotate Final Frame</h2>
-        <div class="card__actions">
-          <button id="clearLineBtn" type="button" class="ghost" disabled>Clear Line</button>
-        </div>
-      </header>
-      <div class="card__body">
-        <canvas id="finalFrame" width="1280" height="720" hidden></canvas>
-        <div class="canvas-container" id="canvasContainer" hidden>
-          <canvas id="annotationCanvas"></canvas>
-          <p class="canvas-hint">
-            Tap or click to place the start of the incision, drag, and release to finish.
-          </p>
-        </div>
-        <p class="help" id="annotationStatus">
-          The final frame appears below shortly.
-        </p>
-      </div>
-    </section>
+    <label for="emailInput">Participant Email</label>  
+    <input type="email" id="emailInput" placeholder="Enter your email. This is required before submitting." />
 
-    <section id="submitCard" class="card">
-      <header class="card__header">
-        <h2>4. Submit Annotation</h2>
-      </header>
-      <div class="card__body card__body--stack">
-        <button id="submitAnnotationBtn" type="button" class="primary" disabled>
-          Submit to Investigator and Next Clip
-        </button>
-        <p class="help" id="submissionStatus">
-          Draw the incision on the frozen frame to enable submission.
-        </p>
-      </div>
-    </section>
+    <label for="fatigueSelect">How are you feeling right now?</label>  
+    <select id="fatigueSelect">  
+      <option value="">-- Select --</option>  
+      <option value="1">1 – Fully alert</option>  
+      <option value="2">2 – Very lively</option>  
+      <option value="3">3 – Okay, fresh</option>  
+      <option value="4">4 – A little tired</option>  
+      <option value="5">5 – Moderately tired</option>  
+      <option value="6">6 – Very tired</option>  
+      <option value="7">7 – Completely exhausted</option>  
+    </select>  
+  </div>
 
-    <section id="confidenceSection" class="card" hidden>
-      <header class="card__header">
-        <h2>Final Question</h2>
-      </header>
-      <div class="card__body card__body--stack">
-        <label class="field">
-          <span class="field__label">On a scale from 1 to 5, how confident did you feel that your incision lines were safe and did not cross a danger zone?</span>
-          <select id="confidenceInput" class="field__control" required>
-            <option value="">Select one</option>
-            <option value="1">1 – Very Insecure</option>
-            <option value="2">2 – Slightly insecure</option>
-            <option value="3">3 – Neutral / Not sure</option>
-            <option value="4">4 – With a certain level of confidence</option>
-            <option value="5">5 – Very confident</option>
-          </select>
-        </label>
-        <button id="submitConfidenceBtn" class="primary">Submit Confidence</button>
-      </div>
-    </section>
+  <!-- ════════════════════════════════════════════  
+       2. VIDEO CLIP  
+       ════════════════════════════════════════════ -->  
+  <div class="card" id="cardVideo">  
+    <h2>2. Review Clip</h2>
 
-    <section id="completionCard" class="card" hidden style="text-align: center; padding: 3rem 1rem;">
-      <h2>All Clips Completed</h2>
-      <p style="color: var(--text-muted); margin-top: 1rem;">Thank you for your participation. You may close this window.</p>
-    </section>
+    <div class="progress-text" id="clipProgress">Initializing…</div>
 
-  </main>
+    <div class="video-wrap">  
+      <!-- playsinline + webkit-playsinline are critical for iOS -->  
+      <video  
+        id="clipVideo"  
+        playsinline  
+        webkit-playsinline  
+        muted  
+        preload="auto"  
+        crossorigin="anonymous"  
+      ></video>  
+      <div id="videoOverlay">Loading Clip…</div>  
+    </div>
 
-  <template id="toastTemplate">
-    <div class="toast" role="status" aria-live="polite"></div>
-  </template>
+    <div class="flex-row">  
+      <button class="btn btn-secondary" id="btnReplay" disabled>↻ Replay Clip</button>  
+    </div>  
+  </div>
 
-  <script src="clip-config.js"></script>
-  <script src="app.js"></script>
-</body>
-</html>
+  <!-- ════════════════════════════════════════════  
+       3. ANNOTATE FINAL FRAME  
+       ════════════════════════════════════════════ -->  
+  <div class="card" id="cardAnnotate">  
+    <h2>3. Annotate Final Frame</h2>
+
+    <div id="statusAnnotate" class="status-bar info">  
+      The final frame appears below shortly.  
+    </div>
+
+    <div class="canvas-wrap" id="canvasWrap">  
+      <canvas id="frameCanvas"></canvas>  
+    </div>
+
+    <p class="canvas-hint">  
+      Tap or click to place the start of the incision, drag, and release to finish.  
+    </p>
+
+    <button class="btn btn-danger" id="btnClear" disabled>✕ Clear Line</button>  
+  </div>
+
+  <!-- ════════════════════════════════════════════  
+       4. SUBMIT  
+       ════════════════════════════════════════════ -->  
+  <div class="card" id="cardSubmit">  
+    <h2>4. Submit Annotation</h2>
+
+    <div id="statusSubmit" class="status-bar warn">  
+      Draw the incision on the frozen frame to enable submission.  
+    </div>
+
+    <button class="btn btn-primary btn-block" id="btnSubmit" disabled>  
+      Submit to Investigator and Next Clip ➜  
+    </button>  
+  </div>
+
+  <!-- ════════════════════════════════════════════  
+       5. CONFIDENCE (shown after submit)  
+       ════════════════════════════════════════════ -->  
+  <div class="card hidden" id="cardConfidence">  
+    <h2>Final Question</h2>  
+    <p style="margin-bottom:8px;font-size:.9rem;">  
+      On a scale from 1 to 5, how confident did you feel that your incision lines  
+      were safe and did not cross a danger zone?  
+    </p>
+
+    <div class="radio-group" id="confidenceGroup">  
+      <label><input type="radio" name="confidence" value="1" /> 1 – Very Insecure</label>  
+      <label><input type="radio" name="confidence" value="2" /> 2 – Slightly insecure</label>  
+      <label><input type="radio" name="confidence" value="3" /> 3 – Neutral / Not sure</label>  
+      <label><input type="radio" name="confidence" value="4" /> 4 – With a certain level of confidence</label>  
+      <label><input type="radio" name="confidence" value="5" /> 5 – Very confident</label>  
+    </div>
+
+    <button class="btn btn-success btn-block" id="btnConfidence" disabled>  
+      Submit Confidence  
+    </button>  
+  </div>
+
+  <!-- ════════════════════════════════════════════  
+       6. DONE  
+       ════════════════════════════════════════════ -->  
+  <div class="card hidden" id="cardDone">  
+    <div class="done-screen">  
+      <h2>All Clips Completed 🎉</h2>  
+      <p>Thank you for your participation. You may close this window.</p>  
+    </div>  
+  </div>
+
+  <script src="app.js"></script>  
+</body>  
+</html>  
