@@ -125,8 +125,7 @@ body {
   border: 1px solid rgba(148, 163, 184, 0.25);
 }
 
-.video-shell video,
-.video-shell canvas {
+.video-shell video {
   width: 100%;
   height: auto;
   display: block;
@@ -148,18 +147,36 @@ body {
   color: var(--text-muted);
 }
 
-.canvas-container {
-  position: relative;
-  display: grid;
-  gap: 0.5rem;
-}
+/* --- UPDATED CANVAS CONTAINER CSS --- */
 
-.canvas-container canvas {
+#canvasContainer {
+  position: relative;
   width: 100%;
   border-radius: 18px;
   border: 1px solid rgba(148, 163, 184, 0.35);
+  overflow: hidden; /* Keeps the rounded corners matching the video */
+  display: block; 
+}
+
+#finalFrame {
+  display: block;
+  width: 100%;
+  height: auto;
   touch-action: none;
 }
+
+#annotationCanvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 10;
+  touch-action: none; /* Critical: Prevents page scrolling when drawing on mobile */
+  background: transparent !important;
+}
+
+/* ------------------------------------ */
 
 .canvas-hint {
   margin: 0;
