@@ -132,41 +132,63 @@ body {
   display: block;
 }
 
-/* OVERLAPPING CANVAS GRID */
+.video-shell__overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  justify-items: center;
+  align-items: center;
+  background: rgba(2, 6, 23, 0.65);
+  gap: 1rem;
+}
+
+.overlay-instructions {
+  text-align: center;
+  max-width: 40ch;
+  color: var(--text-muted);
+}
+
 .canvas-container {
-  position: relative;
   display: grid;
   gap: 0.5rem;
 }
 
-.canvas-container canvas {
+.canvas-stage {
+  position: relative;
   width: 100%;
+  aspect-ratio: 16 / 9;
   border-radius: 18px;
+  overflow: hidden;
   border: 1px solid rgba(148, 163, 184, 0.35);
-  touch-action: none;
-  grid-column: 1;
-  grid-row: 1;
+  background: rgba(15, 23, 42, 0.5);
+}
+
+.canvas-stage canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 
 #finalFrame {
-  z-index: 1;
+  z-index: 0;
 }
 
 #annotationCanvas {
-  z-index: 2;
-  background: transparent;
+  z-index: 1;
+  touch-action: none;
 }
 
 .canvas-hint {
   margin: 0;
   font-size: 0.9rem;
   color: var(--text-muted);
-  grid-column: 1;
-  grid-row: 2;
 }
 
 .help {
   margin: 0;
+  color: var(--text-muted);
   font-size: 0.92rem;
 }
 
@@ -211,24 +233,42 @@ button:not(:disabled):active {
 
 .toast {
   position: fixed;
-  inset-inline: 1.5rem;
-  bottom: 2rem;
-  background: var(--surface-light);
-  color: #0f172a;
-  padding: 1rem 1.5rem;
-  border-radius: 12px;
-  font-weight: 500;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
-  transform: translateY(150%);
+  inset-inline: 50%;
+  bottom: 24px;
+  transform: translateX(-50%) translateY(20px);
+  background: rgba(14, 165, 233, 0.95);
+  color: #021421;
+  padding: 0.75rem 1.2rem;
+  border-radius: 999px;
+  font-weight: 600;
   opacity: 0;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  z-index: 50;
-  text-align: center;
-  max-width: 400px;
-  margin: 0 auto;
+  transition: all 0.2s ease;
+  z-index: 999;
+  box-shadow: 0 20px 40px -18px rgba(14, 165, 233, 0.8);
 }
 
 .toast--visible {
-  transform: translateY(0);
   opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+@media (max-width: 720px) {
+  .layout {
+    padding: 2.5rem 1rem 3rem;
+  }
+
+  .card__header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .card__actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  button {
+    width: 100%;
+  }
 }
