@@ -13,7 +13,7 @@ const toastTemplate = document.getElementById("toastTemplate");
 const submitAnnotationBtn = document.getElementById("submitAnnotationBtn");
 const submissionStatus = document.getElementById("submissionStatus");
 
-// NEW: Elements for the final flow
+// Elements for the final flow
 const confidenceSection = document.getElementById("confidenceSection");
 const confidenceInput = document.getElementById("confidenceInput");
 const submitConfidenceBtn = document.getElementById("submitConfidenceBtn");
@@ -203,7 +203,7 @@ function resetAnnotationState() {
   submissionInFlight = false;
   annotationCtx.clearRect(0, 0, annotationCanvas.width, annotationCanvas.height);
   overlayCtx.clearRect(0, 0, finalFrameCanvas.width, finalFrameCanvas.height);
-  annotationCanvas.style.backgroundImage = "";
+  
   annotationStatus.textContent =
     "Final frame will appear below shortly. You can keep watching the clip while it prepares.";
   clearLineBtn.disabled = true;
@@ -222,7 +222,7 @@ function resetAnnotationState() {
 }
 
 function resizeCanvases(width, height) {
-  // Cap the maximum width to 1280 to prevent iOS memory crashes
+  // Cap the maximum width to prevent iOS memory crashes
   const MAX_WIDTH = 1280;
   if (width > MAX_WIDTH) {
     height = Math.floor(height * (MAX_WIDTH / width));
@@ -326,20 +326,12 @@ function captureFrameImage(source, frameTimeValue) {
 
   const firstCapture = !frameCaptured;
   resizeCanvases(source.videoWidth, source.videoHeight);
+  
+  // Directly draw the video to the bottom layer canvas
   overlayCtx.drawImage(source, 0, 0, finalFrameCanvas.width, finalFrameCanvas.height);
+  
+  // Clear the top layer annotation canvas
   annotationCtx.clearRect(0, 0, annotationCanvas.width, annotationCanvas.height);
-
-  try {
-    const dataUrl = finalFrameCanvas.toDataURL("image/png");
-    annotationCanvas.style.backgroundImage = `url(${dataUrl})`;
-    annotationCanvas.style.backgroundSize = "contain";
-    annotationCanvas.style.backgroundRepeat = "no-repeat";
-    annotationCanvas.style.backgroundPosition = "center";
-  } catch (error) {
-    frameCaptured = false;
-    showToast("Unable to capture frame. Serve the clip from the same origin or enable CORS.");
-    return false;
-  }
 
   frameCaptured = true;
   canvasContainer.hidden = false;
@@ -401,7 +393,7 @@ function handleVideoLoaded() {
 }
 
 function handleVideoPlay() {
-  // Mobile browsers will allow this because it's part of a user gesture
+  // Mobile browsers will now allow this because it's part of a user gesture
   if (helperVideo && helperVideo.readyState === 0) {
     helperVideo.load();
   }
@@ -697,7 +689,7 @@ function finishStudy() {
   confidenceSection.hidden = false;
 }
 
-// NEW: Handle Confidence Submission
+// Handle Confidence Submission
 submitConfidenceBtn.addEventListener("click", async () => {
   const score = confidenceInput.value;
   if (!score) {
