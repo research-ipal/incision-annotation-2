@@ -497,7 +497,20 @@ function normalizeFromPixels(pixels, referenceSize) {
 function redrawCanvas() {
   annotationCtx.clearRect(0, 0, annotationCanvas.width, annotationCanvas.height);
 
-  if (expertLines && Array.isArray(expertLines.incisionDetails)) {
+  // 1. Draw the Expert JSON Overlay
+  if (expertLines) {
+    let linesToDraw = [];
+    
+    // Safely check for either JSON format
+    if (expertLines.incisions && Array.isArray(expertLines.incisions)) {
+      linesToDraw = expertLines.incisions;
+    } else if (expertLines.incisionDetails && Array.isArray(expertLines.incisionDetails)) {
+      linesToDraw = expertLines.incisionDetails.map(d =>
+        d.normalized ?? normalizeFromPixels(d.pixels, expertLines.canvasSize)
+      );
+    }
+
+    if (linesToDraw.length > 0) {
       const ctx = annotationCtx;
       const width = annotationCanvas.width;
       const height = annotationCanvas.height;
@@ -506,23 +519,23 @@ function redrawCanvas() {
       ctx.lineWidth = Math.max(2, width * 0.005);
       ctx.setLineDash([8, 6]); 
 
-      expertLines.incisionDetails.forEach(detail => {
-          const normalizedLine = detail.normalized ?? 
-                                 normalizeFromPixels(detail.pixels, expertLines.canvasSize);          
-          const startX = normalizedLine.start.x * width;
-          const startY = normalizedLine.start.y * height;
-          const endX = normalizedLine.end.x * width;
-          const endY = normalizedLine.end.y * height;
-          
-          ctx.beginPath();
-          ctx.moveTo(startX, startY);
-          ctx.lineTo(endX, endY);
-          ctx.stroke();
+      linesToDraw.forEach(normalizedLine => {
+        const startX = normalizedLine.start.x * width;
+        const startY = normalizedLine.start.y * height;
+        const endX = normalizedLine.end.x * width;
+        const endY = normalizedLine.end.y * height;
+        
+        ctx.beginPath();
+        ctx.moveTo(startX, startY);
+        ctx.lineTo(endX, endY);
+        ctx.stroke();
       });
 
       ctx.setLineDash([]); 
+    }
   }
 
+  // 2. Draw the User's Active Line
   const line = activeLine;
   if (!line) return;
 
