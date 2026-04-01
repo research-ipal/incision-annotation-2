@@ -88,7 +88,6 @@ function initApp() {
     return;
   }
 
-  // Start at the first clip
   currentClipIndex = 0;
   loadClip(currentClipIndex);
 }
@@ -117,7 +116,6 @@ async function loadClip(index) {
 
   const clip = clips[index];
 
-  // Update Header Label
   if (clipLabel) {
     clipLabel.textContent = `${clip.label} (${index + 1} of ${clips.length})`;
   }
@@ -129,7 +127,6 @@ async function loadClip(index) {
     poster: clip.poster || "",
   };
 
-  // Load expert lines before continuing
   const annotationType = currentClip.annotationType || "gt";
   const clipIdBase = currentClip.id.replace(/_(mock|gt)$/, "");
 
@@ -144,7 +141,7 @@ async function loadClip(index) {
   video.setAttribute("playsinline", "");
   video.setAttribute("webkit-playsinline", "");
   video.crossOrigin = "anonymous";
-  
+
   if (currentClip.poster) {
     video.setAttribute("poster", currentClip.poster);
   } else {
@@ -197,19 +194,20 @@ function resetAnnotationState() {
   teardownHelperVideo();
   frameCaptured = false;
   activeLine = null;
-  expertLines = null; 
+  expertLines = null;
   pointerDown = false;
   latestPayload = null;
   submissionInFlight = false;
+
   annotationCtx.clearRect(0, 0, annotationCanvas.width, annotationCanvas.height);
   overlayCtx.clearRect(0, 0, finalFrameCanvas.width, finalFrameCanvas.height);
-  annotationCanvas.style.backgroundImage = "";
+
   annotationStatus.textContent =
     "Final frame will appear below shortly. You can keep watching the clip while it prepares.";
   clearLineBtn.disabled = true;
   submitAnnotationBtn.disabled = true;
   submitAnnotationBtn.textContent = "Submit to Investigator and Next Clip";
-  
+
   if (submissionConfig.endpoint) {
     submissionStatus.textContent = participantIdValue
       ? "Draw the incision on the frozen frame to enable submission."
@@ -319,26 +317,17 @@ function captureFrameImage(source, frameTimeValue) {
 
   const firstCapture = !frameCaptured;
   resizeCanvases(source.videoWidth, source.videoHeight);
-  overlayCtx.drawImage(source, 0, 0, finalFrameCanvas.width, finalFrameCanvas.height);
-  annotationCtx.clearRect(0, 0, annotationCanvas.width, annotationCanvas.height);
 
-  try {
-    const dataUrl = finalFrameCanvas.toDataURL("image/png");
-    annotationCanvas.style.backgroundImage = `url(${dataUrl})`;
-    annotationCanvas.style.backgroundSize = "contain";
-    annotationCanvas.style.backgroundRepeat = "no-repeat";
-    annotationCanvas.style.backgroundPosition = "center";
-  } catch (error) {
-    frameCaptured = false;
-    showToast("Unable to capture frame. Serve the clip from the same origin or enable CORS.");
-    return false;
-  }
+  overlayCtx.clearRect(0, 0, finalFrameCanvas.width, finalFrameCanvas.height);
+  overlayCtx.drawImage(source, 0, 0, finalFrameCanvas.width, finalFrameCanvas.height);
+
+  annotationCtx.clearRect(0, 0, annotationCanvas.width, annotationCanvas.height);
 
   frameCaptured = true;
   canvasContainer.hidden = false;
-  
+
   annotationStatus.textContent = expertLines
-    ? "Final frame ready. Draw your incision line on top of the safety corridor." 
+    ? "Final frame ready. Draw your incision line on top of the safety corridor."
     : "Final frame ready. Review the clip above and draw your incision when ready.";
 
   if (firstCapture) {
@@ -349,12 +338,13 @@ function captureFrameImage(source, frameTimeValue) {
         "Final frame captured below. You can keep watching or replay the clip when ready.";
     }
   }
+
   replayBtn.disabled = false;
   const numericTime = Number(
     ((frameTimeValue ?? source.currentTime ?? 0) || 0).toFixed(3)
   );
   capturedFrameTimeValue = Number.isFinite(numericTime) ? numericTime : 0;
-  
+
   redrawCanvas();
   return true;
 }
@@ -372,7 +362,7 @@ function freezeOnFinalFrame() {
     const captureTime = Number.isFinite(video.duration)
       ? video.duration
       : video.currentTime || capturedFrameTimeValue;
-    const numericTime = Number(((captureTime || 0)).toFixed(3));
+    const numericTime = Number((captureTime || 0).toFixed(3));
     capturedFrameTimeValue = Number.isFinite(numericTime) ? numericTime : capturedFrameTimeValue;
   }
   videoStatus.textContent =
@@ -422,7 +412,7 @@ function handleVideoTimeUpdate() {
       return;
     }
     annotationStatus.textContent = expertLines
-      ? "Final frame ready. Draw your incision line on top of the safety corridor." 
+      ? "Final frame ready. Draw your incision line on top of the safety corridor."
       : "Final frame ready. Review the clip above and draw your incision when ready.";
   }
 }
@@ -432,7 +422,7 @@ function handleReplay() {
   annotationStatus.textContent =
     "Final frame remains below. Review the clip again and adjust your line if needed.";
   activeLine = null;
-  redrawCanvas(); 
+  redrawCanvas();
   clearLineBtn.disabled = true;
   submitAnnotationBtn.disabled = true;
   if (submissionConfig.endpoint) {
@@ -492,39 +482,44 @@ function normalizeFromPixels(pixels, referenceSize) {
 function redrawCanvas() {
   annotationCtx.clearRect(0, 0, annotationCanvas.width, annotationCanvas.height);
 
+  if (frameCaptured && finalFrameCanvas.width && finalFrameCanvas.height) {
+    annotationCtx.drawImage(finalFrameCanvas, 0, 0, annotationCanvas.width, annotationCanvas.height);
+  }
+
   if (expertLines && Array.isArray(expertLines.incisionDetails)) {
-      const ctx = annotationCtx;
-      const width = annotationCanvas.width;
-      const height = annotationCanvas.height;
+    const ctx = annotationCtx;
+    const width = annotationCanvas.width;
+    const height = annotationCanvas.height;
 
-      ctx.strokeStyle = "rgba(0, 255, 0, 0.7)"; 
-      ctx.lineWidth = Math.max(2, width * 0.005);
-      ctx.setLineDash([8, 6]); 
+    ctx.strokeStyle = "rgba(0, 255, 0, 0.7)";
+    ctx.lineWidth = Math.max(2, width * 0.005);
+    ctx.setLineDash([8, 6]);
 
-      expertLines.incisionDetails.forEach(detail => {
-          const normalizedLine = detail.normalized ?? 
-                                 normalizeFromPixels(detail.pixels, expertLines.canvasSize);          
-          const startX = normalizedLine.start.x * width;
-          const startY = normalizedLine.start.y * height;
-          const endX = normalizedLine.end.x * width;
-          const endY = normalizedLine.end.y * height;
-          
-          ctx.beginPath();
-          ctx.moveTo(startX, startY);
-          ctx.lineTo(endX, endY);
-          ctx.stroke();
-      });
+    expertLines.incisionDetails.forEach((detail) => {
+      const normalizedLine =
+        detail.normalized ?? normalizeFromPixels(detail.pixels, expertLines.canvasSize);
 
-      ctx.setLineDash([]); 
+      const startX = normalizedLine.start.x * width;
+      const startY = normalizedLine.start.y * height;
+      const endX = normalizedLine.end.x * width;
+      const endY = normalizedLine.end.y * height;
+
+      ctx.beginPath();
+      ctx.moveTo(startX, startY);
+      ctx.lineTo(endX, endY);
+      ctx.stroke();
+    });
+
+    ctx.setLineDash([]);
   }
 
   const line = activeLine;
   if (!line) return;
 
-  annotationCtx.strokeStyle = "#38bdf8"; 
+  annotationCtx.strokeStyle = "#38bdf8";
   annotationCtx.lineWidth = Math.max(4, annotationCanvas.width * 0.004);
   annotationCtx.lineCap = "round";
-  
+
   annotationCtx.beginPath();
   annotationCtx.moveTo(line.start.x, line.start.y);
   annotationCtx.lineTo(line.end.x, line.end.y);
@@ -597,10 +592,12 @@ function updateSubmissionPayload() {
     generatedAt: new Date().toISOString(),
     participantId: participantIdValue || "",
     filenameHint,
-    expertAnnotation: expertLines ? {
-      clipId: expertLines.clipId,
-      incisions: expertLines.incisions || expertLines.incisionDetails.map(d => d.normalized),
-    } : null,
+    expertAnnotation: expertLines
+      ? {
+          clipId: expertLines.clipId,
+          incisions: expertLines.incisions || expertLines.incisionDetails.map((d) => d.normalized),
+        }
+      : null,
   };
 
   latestPayload = payload;
@@ -634,7 +631,7 @@ function handlePointerDown(evt) {
   pointerDown = true;
   const start = getPointerPosition(evt);
   activeLine = { start, end: start };
-  redrawCanvas(); 
+  redrawCanvas();
 }
 
 function handlePointerMove(evt) {
@@ -662,7 +659,7 @@ function handlePointerUp(evt) {
 function clearLine() {
   activeLine = null;
   pointerDown = false;
-  redrawCanvas(); 
+  redrawCanvas();
   annotationStatus.textContent = expertLines
     ? "Final frame ready. Draw your incision line on top of the safety corridor."
     : "Final frame ready. Draw your incision line.";
@@ -670,22 +667,18 @@ function clearLine() {
   updateSubmissionPayload();
 }
 
-// MODIFIED: Transition to Confidence Question instead of completion text
 function finishStudy() {
   video.pause();
   video.removeAttribute("src");
   video.load();
-  
-  // Hide all annotation cards
-  annotationSections.forEach(section => {
+
+  annotationSections.forEach((section) => {
     if (section) section.hidden = true;
   });
 
-  // Show Confidence Question
   confidenceSection.hidden = false;
 }
 
-// NEW: Handle Confidence Submission
 submitConfidenceBtn.addEventListener("click", async () => {
   const score = confidenceInput.value;
   if (!score) {
@@ -704,28 +697,25 @@ submitConfidenceBtn.addEventListener("click", async () => {
   };
 
   try {
-     if (submissionConfig.endpoint) {
-        await fetch(submissionConfig.endpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-     } else {
-        // Simulation
-        await new Promise(r => setTimeout(r, 600));
-        console.log("Mock Confidence Submission:", payload);
-     }
-     
-     // Success: Show Completion Card
-     confidenceSection.hidden = true;
-     completionCard.hidden = false;
-     showToast("Response saved. Thank you!");
+    if (submissionConfig.endpoint) {
+      await fetch(submissionConfig.endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    } else {
+      await new Promise((r) => setTimeout(r, 600));
+      console.log("Mock Confidence Submission:", payload);
+    }
 
+    confidenceSection.hidden = true;
+    completionCard.hidden = false;
+    showToast("Response saved. Thank you!");
   } catch (error) {
-     console.error(error);
-     showToast("Error submitting confidence. Please try again.");
-     submitConfidenceBtn.disabled = false;
-     submitConfidenceBtn.textContent = "Submit Confidence";
+    console.error(error);
+    showToast("Error submitting confidence. Please try again.");
+    submitConfidenceBtn.disabled = false;
+    submitConfidenceBtn.textContent = "Submit Confidence";
   }
 });
 
@@ -792,18 +782,16 @@ async function submitAnnotation() {
     if (!response.ok) {
       throw new Error(`Request failed with status ${response.status}`);
     }
-    
+
     showToast("Annotation saved!");
 
-    // Next Clip Logic
     currentClipIndex++;
-    
+
     if (currentClipIndex < clips.length) {
       loadClip(currentClipIndex);
     } else {
       finishStudy();
     }
-
   } catch (error) {
     submissionStatus.textContent = "Submission failed. Please try again.";
     submitAnnotationBtn.disabled = false;
@@ -837,16 +825,16 @@ function getFilenameHint() {
 
 function buildAdditionalFields(filenameHint) {
   const fields = { ...baseAdditionalFields };
-  
+
   const fatigue = document.getElementById("fatigueInput")?.value;
-  
+
   if (participantIdValue) {
     fields.studyId = participantIdValue;
     fields.participantId = participantIdValue;
   }
   if (filenameHint) fields.filenameHint = filenameHint;
   if (fatigue) fields.fatigue = fatigue;
-  
+
   return fields;
 }
 
@@ -880,6 +868,5 @@ if (window.PointerEvent) {
   annotationCanvas.addEventListener("touchcancel", handlePointerUp, { passive: false });
 }
 
-// Initialize the App
 initApp();
 applyParticipantId(participantIdInput.value);
