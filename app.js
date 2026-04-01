@@ -321,24 +321,15 @@ function captureFrameImage(source, frameTimeValue) {
   }
 
   const firstCapture = !frameCaptured;
+  resizeCanvases(source.videoWidth, source.videoHeight);
   
-  // 1. FORCED NATIVE SIZING: Explicitly set the internal resolution of BOTH canvases 
-  // to match the video. This prevents iOS Safari from drawing into a 0x0 void.
-  finalFrameCanvas.width = source.videoWidth;
-  finalFrameCanvas.height = source.videoHeight;
-  annotationCanvas.width = source.videoWidth;
-  annotationCanvas.height = source.videoHeight;
-
-  // 2. Call your existing resize logic (in case it handles CSS scaling or offsets)
-  if (typeof resizeCanvases === 'function') {
-    resizeCanvases(source.videoWidth, source.videoHeight);
-  }
-  
-  // 3. Draw the video frame to the bottom canvas layer
+  // Draw video frame to the bottom canvas layer
   overlayCtx.drawImage(source, 0, 0, finalFrameCanvas.width, finalFrameCanvas.height);
   
-  // 4. Clear the top drawing layer
+  // Clear the drawing layer
   annotationCtx.clearRect(0, 0, annotationCanvas.width, annotationCanvas.height);
+
+  // We completely bypass the finalFrameCanvas.toDataURL() bottleneck here!
 
   frameCaptured = true;
   canvasContainer.hidden = false;
@@ -365,6 +356,7 @@ function captureFrameImage(source, frameTimeValue) {
   redrawCanvas();
   return true;
 }
+
 function freezeOnFinalFrame() {
   if (!frameCaptured) {
     const captureTime = Number.isFinite(video.duration)
