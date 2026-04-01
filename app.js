@@ -50,9 +50,6 @@ let submissionInFlight = false;
 let capturedFrameTimeValue = 0;
 let helperVideo = null;
 let helperSeekAttempted = false;
-// Stores the captured frame as ImageBitmap (preferred) or HTMLVideoElement snapshot
-// so we never need toDataURL() — avoids cross-origin canvas taint on mobile.
-let capturedFrameBitmap = null;
 
 // Sequential Navigation State
 let currentClipIndex = 0;
@@ -207,10 +204,6 @@ function resetAnnotationState() {
   annotationCtx.clearRect(0, 0, annotationCanvas.width, annotationCanvas.height);
   overlayCtx.clearRect(0, 0, finalFrameCanvas.width, finalFrameCanvas.height);
   annotationCanvas.style.backgroundImage = "";
-  if (capturedFrameBitmap) {
-    capturedFrameBitmap.close?.();
-    capturedFrameBitmap = null;
-  }
   annotationStatus.textContent =
     "Final frame will appear below shortly. You can keep watching the clip while it prepares.";
   clearLineBtn.disabled = true;
@@ -326,48 +319,26 @@ function captureFrameImage(source, frameTimeValue) {
 
   const firstCapture = !frameCaptured;
   resizeCanvases(source.videoWidth, source.videoHeight);
-
-  // Draw to the hidden overlay canvas (used only for size reference now)
   overlayCtx.drawImage(source, 0, 0, finalFrameCanvas.width, finalFrameCanvas.height);
   annotationCtx.clearRect(0, 0, annotationCanvas.width, annotationCanvas.height);
 
-  // Prefer ImageBitmap — avoids toDataURL() cross-origin taint entirely.
-  // Falls back to drawing directly from the video element each redraw.
-  if (typeof createImageBitmap === "function") {
-    createImageBitmap(source)
-      .then((bitmap) => {
-        if (capturedFrameBitmap) capturedFrameBitmap.close?.();
-        capturedFrameBitmap = bitmap;
-        frameCaptured = true;
-        canvasContainer.hidden = false;
-        redrawCanvas();
-        _onFrameCapturedUI(firstCapture, frameTimeValue, source);
-      })
-      .catch(() => {
-        // createImageBitmap also failed (shouldn't normally happen with crossOrigin set)
-        // Last resort: keep the drawImage-per-frame approach via a flag
-        capturedFrameBitmap = source; // store the element itself
-        frameCaptured = true;
-        canvasContainer.hidden = false;
-        redrawCanvas();
-        _onFrameCapturedUI(firstCapture, frameTimeValue, source);
-      });
-    // Return true optimistically — the async path will finish shortly
-    return true;
-  } else {
-    // No createImageBitmap — store the element reference and draw each time
-    capturedFrameBitmap = source;
-    frameCaptured = true;
-    canvasContainer.hidden = false;
-    redrawCanvas();
-    _onFrameCapturedUI(firstCapture, frameTimeValue, source);
-    return true;
+  try {
+    const dataUrl = finalFrameCanvas.toDataURL("image/png");
+    annotationCanvas.style.backgroundImage = `url(${dataUrl})`;
+    annotationCanvas.style.backgroundSize = "contain";
+    annotationCanvas.style.backgroundRepeat = "no-repeat";
+    annotationCanvas.style.backgroundPosition = "center";
+  } catch (error) {
+    frameCaptured = false;
+    showToast("Unable to capture frame. Serve the clip from the same origin or enable CORS.");
+    return false;
   }
-}
 
-function _onFrameCapturedUI(firstCapture, frameTimeValue, source) {
+  frameCaptured = true;
+  canvasContainer.hidden = false;
+  
   annotationStatus.textContent = expertLines
-    ? "Final frame ready. Draw your incision line on top of the safety corridor."
+    ? "Final frame ready. Draw your incision line on top of the safety corridor." 
     : "Final frame ready. Review the clip above and draw your incision when ready.";
 
   if (firstCapture) {
@@ -383,6 +354,9 @@ function _onFrameCapturedUI(firstCapture, frameTimeValue, source) {
     ((frameTimeValue ?? source.currentTime ?? 0) || 0).toFixed(3)
   );
   capturedFrameTimeValue = Number.isFinite(numericTime) ? numericTime : 0;
+  
+  redrawCanvas();
+  return true;
 }
 
 function freezeOnFinalFrame() {
@@ -426,12 +400,6 @@ function handleVideoPlay() {
 }
 
 function handleVideoEnded() {
-  // On mobile the video frame is still available immediately at `ended`.
-  // Try to capture from the main element first; fall back to helper video.
-  if (!frameCaptured && video.videoWidth && video.videoHeight) {
-    const t = Number.isFinite(video.duration) ? video.duration : video.currentTime;
-    captureFrameImage(video, t);
-  }
   freezeOnFinalFrame();
   video.controls = true;
   video.setAttribute("controls", "");
@@ -448,9 +416,7 @@ function handleVideoTimeUpdate() {
   }
 
   const remaining = duration - video.currentTime;
-  // Use a generous 1.5 s window — mobile browsers fire timeupdate far less
-  // frequently than desktop, so 0.25 s is often missed entirely.
-  if (remaining <= 1.5) {
+  if (remaining <= 0.25) {
     const success = captureFrameImage(video, duration);
     if (!success) {
       return;
@@ -525,15 +491,6 @@ function normalizeFromPixels(pixels, referenceSize) {
 
 function redrawCanvas() {
   annotationCtx.clearRect(0, 0, annotationCanvas.width, annotationCanvas.height);
-
-  // Draw the frozen frame first (works cross-origin — no toDataURL needed)
-  if (capturedFrameBitmap) {
-    try {
-      annotationCtx.drawImage(capturedFrameBitmap, 0, 0, annotationCanvas.width, annotationCanvas.height);
-    } catch (e) {
-      // If the stored element became invalid, skip — the frame will stay blank
-    }
-  }
 
   if (expertLines && Array.isArray(expertLines.incisionDetails)) {
       const ctx = annotationCtx;
