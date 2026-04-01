@@ -77,23 +77,39 @@
         </div>
       </header>
       <div class="card__body">
+        <canvas id="finalFrame" width="1280" height="720" hidden></canvas>
         <div class="canvas-container" id="canvasContainer" hidden>
-          <canvas id="finalFrame"></canvas>
-          <canvas id="annotationCanvas"></canvas>
+          <!-- Frozen video frame shown underneath the annotation canvas -->
+          <video
+            id="frozenVideo"
+            playsinline
+            webkit-playsinline
+            muted
+            style="display:block;width:100%;border-radius:18px;border:1px solid rgba(148,163,184,0.35);"
+          ></video>
+          <!-- Transparent canvas overlaid on the frozen video for drawing -->
+          <canvas id="annotationCanvas" style="position:absolute;top:0;left:0;width:100%;height:100%;border-radius:18px;"></canvas>
           <p class="canvas-hint">
             Tap or click to place the start of the incision, drag, and release to finish.
           </p>
         </div>
         <p class="help" id="annotationStatus">
-          Final frame will appear below shortly. You can keep watching the clip while it prepares.
+          The final frame appears below shortly.
         </p>
       </div>
     </section>
 
     <section id="submitCard" class="card">
+      <header class="card__header">
+        <h2>4. Submit Annotation</h2>
+      </header>
       <div class="card__body card__body--stack">
-        <button id="submitAnnotationBtn" class="primary" disabled>Submit to Investigator and Next Clip</button>
-        <p class="help" id="submissionStatus">Enter your participant ID above before submitting.</p>
+        <button id="submitAnnotationBtn" type="button" class="primary" disabled>
+          Submit to Investigator and Next Clip
+        </button>
+        <p class="help" id="submissionStatus">
+          Draw the incision on the frozen frame to enable submission.
+        </p>
       </div>
     </section>
 
