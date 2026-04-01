@@ -197,13 +197,16 @@ function resetAnnotationState() {
   teardownHelperVideo();
   frameCaptured = false;
   activeLine = null;
-  expertLines = null; 
+  expertLines = null;
   pointerDown = false;
   latestPayload = null;
   submissionInFlight = false;
+  
   annotationCtx.clearRect(0, 0, annotationCanvas.width, annotationCanvas.height);
   overlayCtx.clearRect(0, 0, finalFrameCanvas.width, finalFrameCanvas.height);
-  annotationCanvas.style.backgroundImage = "";
+  
+  // Removed the line trying to reset the backgroundImage
+  
   annotationStatus.textContent =
     "Final frame will appear below shortly. You can keep watching the clip while it prepares.";
   clearLineBtn.disabled = true;
@@ -319,20 +322,14 @@ function captureFrameImage(source, frameTimeValue) {
 
   const firstCapture = !frameCaptured;
   resizeCanvases(source.videoWidth, source.videoHeight);
+  
+  // Draw video frame to the bottom canvas layer
   overlayCtx.drawImage(source, 0, 0, finalFrameCanvas.width, finalFrameCanvas.height);
+  
+  // Clear the drawing layer
   annotationCtx.clearRect(0, 0, annotationCanvas.width, annotationCanvas.height);
 
-  try {
-    const dataUrl = finalFrameCanvas.toDataURL("image/png");
-    annotationCanvas.style.backgroundImage = `url(${dataUrl})`;
-    annotationCanvas.style.backgroundSize = "contain";
-    annotationCanvas.style.backgroundRepeat = "no-repeat";
-    annotationCanvas.style.backgroundPosition = "center";
-  } catch (error) {
-    frameCaptured = false;
-    showToast("Unable to capture frame. Serve the clip from the same origin or enable CORS.");
-    return false;
-  }
+  // We completely bypass the finalFrameCanvas.toDataURL() bottleneck here!
 
   frameCaptured = true;
   canvasContainer.hidden = false;
@@ -349,6 +346,7 @@ function captureFrameImage(source, frameTimeValue) {
         "Final frame captured below. You can keep watching or replay the clip when ready.";
     }
   }
+  
   replayBtn.disabled = false;
   const numericTime = Number(
     ((frameTimeValue ?? source.currentTime ?? 0) || 0).toFixed(3)
