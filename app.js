@@ -4,7 +4,6 @@ const clipLabel = document.getElementById("clipLabel");
 const replayBtn = document.getElementById("replayBtn");
 const video = document.getElementById("caseVideo");
 const finalFrameCanvas = document.getElementById("finalFrame");
-const frozenVideo = document.getElementById("frozenVideo");
 const annotationCanvas = document.getElementById("annotationCanvas");
 const canvasContainer = document.getElementById("canvasContainer");
 const clearLineBtn = document.getElementById("clearLineBtn");
@@ -198,21 +197,16 @@ function resetAnnotationState() {
   teardownHelperVideo();
   frameCaptured = false;
   activeLine = null;
-  expertLines = null; 
+  expertLines = null;
   pointerDown = false;
   latestPayload = null;
   submissionInFlight = false;
+  
   annotationCtx.clearRect(0, 0, annotationCanvas.width, annotationCanvas.height);
   overlayCtx.clearRect(0, 0, finalFrameCanvas.width, finalFrameCanvas.height);
-
-  // Reset the frozen video element
-  frozenVideo.pause();
-  frozenVideo.removeAttribute("src");
-  frozenVideo.load();
-  // Reset annotation canvas size so it matches the frozen video naturally
-  annotationCanvas.width = 1280;
-  annotationCanvas.height = 720;
-
+  
+  // Removed the line trying to reset the backgroundImage
+  
   annotationStatus.textContent =
     "Final frame will appear below shortly. You can keep watching the clip while it prepares.";
   clearLineBtn.disabled = true;
@@ -294,8 +288,12 @@ function helperFinalizeCapture() {
   if (!helperVideo || helperVideo.readyState < 2 || frameCaptured) {
     return;
   }
-  showFrozenFrame(helperVideo, helperVideo.currentTime);
-  teardownHelperVideo();
+  const success = captureFrameImage(helperVideo, helperVideo.currentTime);
+  if (success) {
+    teardownHelperVideo();
+  } else {
+    handleHelperError();
+  }
 }
 
 function handleHelperSeeked() {
@@ -314,97 +312,6 @@ function handleHelperError() {
   if (!frameCaptured) {
     annotationStatus.textContent =
       "Final frame will appear below once the clip finishes playing. If it does not, replay the clip.";
-  }
-}
-
-/**
- * showFrozenFrame — the mobile-safe replacement for captureFrameImage.
- *
- * Instead of drawing video pixels onto a canvas (which taints the canvas on
- * iOS Safari for cross-origin media even with crossorigin="anonymous"), we:
- *   1. Copy the src + currentTime into a dedicated <video id="frozenVideo">
- *   2. Seek frozenVideo to the last frame and pause it
- *   3. Display it underneath a *transparent* annotation canvas via CSS stacking
- *
- * The annotation canvas only draws lines — it never reads video pixels —
- * so no taint error is ever thrown. This works on iOS Safari, Android Chrome,
- * and all desktop browsers.
- */
-function showFrozenFrame(sourceVideo, frameTimeValue) {
-  if (frameCaptured) {
-    // Already showing — just update the timestamp if needed
-    const t = Number.isFinite(frameTimeValue) ? frameTimeValue : capturedFrameTimeValue;
-    capturedFrameTimeValue = Number(t.toFixed(3));
-    return;
-  }
-
-  const src = currentClip?.src;
-  if (!src) return;
-
-  const duration = Number.isFinite(sourceVideo.duration) ? sourceVideo.duration : null;
-  const seekTarget = duration
-    ? Math.max(duration - 0.05, 0)
-    : (sourceVideo.currentTime || 0);
-
-  // Mark as captured immediately to prevent duplicate calls
-  frameCaptured = true;
-
-  capturedFrameTimeValue = Number.isFinite(frameTimeValue)
-    ? Number(frameTimeValue.toFixed(3))
-    : Number(seekTarget.toFixed(3));
-
-  // Set up frozenVideo
-  frozenVideo.crossOrigin = "anonymous";
-  frozenVideo.muted = true;
-  frozenVideo.setAttribute("playsinline", "");
-  frozenVideo.setAttribute("webkit-playsinline", "");
-  frozenVideo.src = src;
-  frozenVideo.load();
-
-  // Size the transparent annotation canvas to match the video's natural dimensions
-  const vw = sourceVideo.videoWidth || 1280;
-  const vh = sourceVideo.videoHeight || 720;
-  annotationCanvas.width = vw;
-  annotationCanvas.height = vh;
-
-  const doSeekAndShow = () => {
-    frozenVideo.currentTime = seekTarget;
-
-    const revealOnSeeked = () => {
-      frozenVideo.removeEventListener("seeked", revealOnSeeked);
-      frozenVideo.pause();
-      canvasContainer.hidden = false;
-      annotationCtx.clearRect(0, 0, annotationCanvas.width, annotationCanvas.height);
-      redrawCanvas();
-      _onFrozenFrameReady();
-    };
-
-    frozenVideo.addEventListener("seeked", revealOnSeeked, { once: true });
-
-    // Fallback: if seeked never fires (some mobile browsers), reveal after a short delay
-    setTimeout(() => {
-      if (canvasContainer.hidden) {
-        frozenVideo.removeEventListener("seeked", revealOnSeeked);
-        frozenVideo.pause();
-        canvasContainer.hidden = false;
-        annotationCtx.clearRect(0, 0, annotationCanvas.width, annotationCanvas.height);
-        redrawCanvas();
-        _onFrozenFrameReady();
-      }
-    }, 1800);
-  };
-
-  if (frozenVideo.readyState >= 1) {
-    doSeekAndShow();
-  } else {
-    frozenVideo.addEventListener("loadedmetadata", doSeekAndShow, { once: true });
-    // Fallback if loadedmetadata also stalls
-    setTimeout(() => {
-      if (canvasContainer.hidden && frameCaptured) {
-        canvasContainer.hidden = false;
-        _onFrozenFrameReady();
-      }
-    }, 3000);
   }
 }
 
@@ -458,23 +365,15 @@ function captureFrameImage(source, frameTimeValue) {
   redrawCanvas();
   return true;
 }
-
-function _onFrozenFrameReady() {
-  annotationStatus.textContent = expertLines
-    ? "Final frame ready. Draw your incision line on top of the safety corridor."
-    : "Final frame ready. Review the clip above and draw your incision when ready.";
-  if (video.paused) {
-    videoStatus.textContent = "Final frame captured. Replay the clip if you need another look.";
-  } else {
-    videoStatus.textContent =
-      "Final frame captured below. You can keep watching or replay the clip when ready.";
-  }
-  replayBtn.disabled = false;
-}
-
 function freezeOnFinalFrame() {
   if (!frameCaptured) {
-    showFrozenFrame(video, video.currentTime);
+    const captureTime = Number.isFinite(video.duration)
+      ? video.duration
+      : video.currentTime || 0;
+    const success = captureFrameImage(video, captureTime);
+    if (!success) {
+      return;
+    }
   } else {
     const captureTime = Number.isFinite(video.duration)
       ? video.duration
@@ -507,9 +406,6 @@ function handleVideoPlay() {
 }
 
 function handleVideoEnded() {
-  if (!frameCaptured) {
-    showFrozenFrame(video, video.currentTime);
-  }
   freezeOnFinalFrame();
   video.controls = true;
   video.setAttribute("controls", "");
@@ -526,9 +422,11 @@ function handleVideoTimeUpdate() {
   }
 
   const remaining = duration - video.currentTime;
-  // 1.5 s window — mobile browsers fire timeupdate infrequently
-  if (remaining <= 1.5) {
-    showFrozenFrame(video, duration);
+  if (remaining <= 0.25) {
+    const success = captureFrameImage(video, duration);
+    if (!success) {
+      return;
+    }
     annotationStatus.textContent = expertLines
       ? "Final frame ready. Draw your incision line on top of the safety corridor." 
       : "Final frame ready. Review the clip above and draw your incision when ready.";
@@ -599,7 +497,6 @@ function normalizeFromPixels(pixels, referenceSize) {
 
 function redrawCanvas() {
   annotationCtx.clearRect(0, 0, annotationCanvas.width, annotationCanvas.height);
-  // No image drawing needed — frozenVideo sits underneath as a real DOM element.
 
   if (expertLines && Array.isArray(expertLines.incisionDetails)) {
       const ctx = annotationCtx;
