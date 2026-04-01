@@ -13,7 +13,7 @@ const toastTemplate = document.getElementById("toastTemplate");
 const submitAnnotationBtn = document.getElementById("submitAnnotationBtn");
 const submissionStatus = document.getElementById("submissionStatus");
 
-// Elements for the final flow
+// NEW: Elements for the final flow
 const confidenceSection = document.getElementById("confidenceSection");
 const confidenceInput = document.getElementById("confidenceInput");
 const submitConfidenceBtn = document.getElementById("submitConfidenceBtn");
@@ -50,6 +50,9 @@ let submissionInFlight = false;
 let capturedFrameTimeValue = 0;
 let helperVideo = null;
 let helperSeekAttempted = false;
+// Stores the captured frame as ImageBitmap (preferred) or HTMLVideoElement snapshot
+// so we never need toDataURL() — avoids cross-origin canvas taint on mobile.
+let capturedFrameBitmap = null;
 
 // Sequential Navigation State
 let currentClipIndex = 0;
@@ -203,7 +206,11 @@ function resetAnnotationState() {
   submissionInFlight = false;
   annotationCtx.clearRect(0, 0, annotationCanvas.width, annotationCanvas.height);
   overlayCtx.clearRect(0, 0, finalFrameCanvas.width, finalFrameCanvas.height);
-  
+  annotationCanvas.style.backgroundImage = "";
+  if (capturedFrameBitmap) {
+    capturedFrameBitmap.close?.();
+    capturedFrameBitmap = null;
+  }
   annotationStatus.textContent =
     "Final frame will appear below shortly. You can keep watching the clip while it prepares.";
   clearLineBtn.disabled = true;
@@ -222,13 +229,6 @@ function resetAnnotationState() {
 }
 
 function resizeCanvases(width, height) {
-  // Cap the maximum width to prevent iOS memory crashes
-  const MAX_WIDTH = 1280;
-  if (width > MAX_WIDTH) {
-    height = Math.floor(height * (MAX_WIDTH / width));
-    width = MAX_WIDTH;
-  }
-
   finalFrameCanvas.width = width;
   finalFrameCanvas.height = height;
   annotationCanvas.width = width;
@@ -326,18 +326,48 @@ function captureFrameImage(source, frameTimeValue) {
 
   const firstCapture = !frameCaptured;
   resizeCanvases(source.videoWidth, source.videoHeight);
-  
-  // Directly draw the video to the bottom layer canvas
+
+  // Draw to the hidden overlay canvas (used only for size reference now)
   overlayCtx.drawImage(source, 0, 0, finalFrameCanvas.width, finalFrameCanvas.height);
-  
-  // Clear the top layer annotation canvas
   annotationCtx.clearRect(0, 0, annotationCanvas.width, annotationCanvas.height);
 
-  frameCaptured = true;
-  canvasContainer.hidden = false;
-  
+  // Prefer ImageBitmap — avoids toDataURL() cross-origin taint entirely.
+  // Falls back to drawing directly from the video element each redraw.
+  if (typeof createImageBitmap === "function") {
+    createImageBitmap(source)
+      .then((bitmap) => {
+        if (capturedFrameBitmap) capturedFrameBitmap.close?.();
+        capturedFrameBitmap = bitmap;
+        frameCaptured = true;
+        canvasContainer.hidden = false;
+        redrawCanvas();
+        _onFrameCapturedUI(firstCapture, frameTimeValue, source);
+      })
+      .catch(() => {
+        // createImageBitmap also failed (shouldn't normally happen with crossOrigin set)
+        // Last resort: keep the drawImage-per-frame approach via a flag
+        capturedFrameBitmap = source; // store the element itself
+        frameCaptured = true;
+        canvasContainer.hidden = false;
+        redrawCanvas();
+        _onFrameCapturedUI(firstCapture, frameTimeValue, source);
+      });
+    // Return true optimistically — the async path will finish shortly
+    return true;
+  } else {
+    // No createImageBitmap — store the element reference and draw each time
+    capturedFrameBitmap = source;
+    frameCaptured = true;
+    canvasContainer.hidden = false;
+    redrawCanvas();
+    _onFrameCapturedUI(firstCapture, frameTimeValue, source);
+    return true;
+  }
+}
+
+function _onFrameCapturedUI(firstCapture, frameTimeValue, source) {
   annotationStatus.textContent = expertLines
-    ? "Final frame ready. Draw your incision line on top of the safety corridor." 
+    ? "Final frame ready. Draw your incision line on top of the safety corridor."
     : "Final frame ready. Review the clip above and draw your incision when ready.";
 
   if (firstCapture) {
@@ -353,9 +383,6 @@ function captureFrameImage(source, frameTimeValue) {
     ((frameTimeValue ?? source.currentTime ?? 0) || 0).toFixed(3)
   );
   capturedFrameTimeValue = Number.isFinite(numericTime) ? numericTime : 0;
-  
-  redrawCanvas();
-  return true;
 }
 
 function freezeOnFinalFrame() {
@@ -393,17 +420,18 @@ function handleVideoLoaded() {
 }
 
 function handleVideoPlay() {
-  // Mobile browsers will now allow this because it's part of a user gesture
-  if (helperVideo && helperVideo.readyState === 0) {
-    helperVideo.load();
-  }
-
   videoStatus.textContent = frameCaptured
     ? "Replaying clip. The final frame remains available below."
     : "Watching clip…";
 }
 
 function handleVideoEnded() {
+  // On mobile the video frame is still available immediately at `ended`.
+  // Try to capture from the main element first; fall back to helper video.
+  if (!frameCaptured && video.videoWidth && video.videoHeight) {
+    const t = Number.isFinite(video.duration) ? video.duration : video.currentTime;
+    captureFrameImage(video, t);
+  }
   freezeOnFinalFrame();
   video.controls = true;
   video.setAttribute("controls", "");
@@ -420,9 +448,10 @@ function handleVideoTimeUpdate() {
   }
 
   const remaining = duration - video.currentTime;
-  // Capture the frame roughly 0.15s before the video reaches the exact end
-  if (remaining <= 0.15) {
-    const success = captureFrameImage(video, video.currentTime);
+  // Use a generous 1.5 s window — mobile browsers fire timeupdate far less
+  // frequently than desktop, so 0.25 s is often missed entirely.
+  if (remaining <= 1.5) {
+    const success = captureFrameImage(video, duration);
     if (!success) {
       return;
     }
@@ -497,20 +526,16 @@ function normalizeFromPixels(pixels, referenceSize) {
 function redrawCanvas() {
   annotationCtx.clearRect(0, 0, annotationCanvas.width, annotationCanvas.height);
 
-  // 1. Draw the Expert JSON Overlay
-  if (expertLines) {
-    let linesToDraw = [];
-    
-    // Safely check for either JSON format
-    if (expertLines.incisions && Array.isArray(expertLines.incisions)) {
-      linesToDraw = expertLines.incisions;
-    } else if (expertLines.incisionDetails && Array.isArray(expertLines.incisionDetails)) {
-      linesToDraw = expertLines.incisionDetails.map(d =>
-        d.normalized ?? normalizeFromPixels(d.pixels, expertLines.canvasSize)
-      );
+  // Draw the frozen frame first (works cross-origin — no toDataURL needed)
+  if (capturedFrameBitmap) {
+    try {
+      annotationCtx.drawImage(capturedFrameBitmap, 0, 0, annotationCanvas.width, annotationCanvas.height);
+    } catch (e) {
+      // If the stored element became invalid, skip — the frame will stay blank
     }
+  }
 
-    if (linesToDraw.length > 0) {
+  if (expertLines && Array.isArray(expertLines.incisionDetails)) {
       const ctx = annotationCtx;
       const width = annotationCanvas.width;
       const height = annotationCanvas.height;
@@ -519,23 +544,23 @@ function redrawCanvas() {
       ctx.lineWidth = Math.max(2, width * 0.005);
       ctx.setLineDash([8, 6]); 
 
-      linesToDraw.forEach(normalizedLine => {
-        const startX = normalizedLine.start.x * width;
-        const startY = normalizedLine.start.y * height;
-        const endX = normalizedLine.end.x * width;
-        const endY = normalizedLine.end.y * height;
-        
-        ctx.beginPath();
-        ctx.moveTo(startX, startY);
-        ctx.lineTo(endX, endY);
-        ctx.stroke();
+      expertLines.incisionDetails.forEach(detail => {
+          const normalizedLine = detail.normalized ?? 
+                                 normalizeFromPixels(detail.pixels, expertLines.canvasSize);          
+          const startX = normalizedLine.start.x * width;
+          const startY = normalizedLine.start.y * height;
+          const endX = normalizedLine.end.x * width;
+          const endY = normalizedLine.end.y * height;
+          
+          ctx.beginPath();
+          ctx.moveTo(startX, startY);
+          ctx.lineTo(endX, endY);
+          ctx.stroke();
       });
 
       ctx.setLineDash([]); 
-    }
   }
 
-  // 2. Draw the User's Active Line
   const line = activeLine;
   if (!line) return;
 
@@ -688,6 +713,7 @@ function clearLine() {
   updateSubmissionPayload();
 }
 
+// MODIFIED: Transition to Confidence Question instead of completion text
 function finishStudy() {
   video.pause();
   video.removeAttribute("src");
@@ -702,7 +728,7 @@ function finishStudy() {
   confidenceSection.hidden = false;
 }
 
-// Handle Confidence Submission
+// NEW: Handle Confidence Submission
 submitConfidenceBtn.addEventListener("click", async () => {
   const score = confidenceInput.value;
   if (!score) {
