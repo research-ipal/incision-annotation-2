@@ -408,10 +408,55 @@ function showFrozenFrame(sourceVideo, frameTimeValue) {
   }
 }
 
-// Keep captureFrameImage as an alias so existing call-sites still work
 function captureFrameImage(source, frameTimeValue) {
-  showFrozenFrame(source, frameTimeValue);
-  return true; // always optimistic
+  if (!source.videoWidth || !source.videoHeight) {
+    return false;
+  }
+
+  const firstCapture = !frameCaptured;
+  
+  // 1. FORCED NATIVE SIZING: Explicitly set the internal resolution of BOTH canvases 
+  // to match the video. This prevents iOS Safari from drawing into a 0x0 void.
+  finalFrameCanvas.width = source.videoWidth;
+  finalFrameCanvas.height = source.videoHeight;
+  annotationCanvas.width = source.videoWidth;
+  annotationCanvas.height = source.videoHeight;
+
+  // 2. Call your existing resize logic (in case it handles CSS scaling or offsets)
+  if (typeof resizeCanvases === 'function') {
+    resizeCanvases(source.videoWidth, source.videoHeight);
+  }
+  
+  // 3. Draw the video frame to the bottom canvas layer
+  overlayCtx.drawImage(source, 0, 0, finalFrameCanvas.width, finalFrameCanvas.height);
+  
+  // 4. Clear the top drawing layer
+  annotationCtx.clearRect(0, 0, annotationCanvas.width, annotationCanvas.height);
+
+  frameCaptured = true;
+  canvasContainer.hidden = false;
+  
+  annotationStatus.textContent = expertLines
+    ? "Final frame ready. Draw your incision line on top of the safety corridor." 
+    : "Final frame ready. Review the clip above and draw your incision when ready.";
+
+  if (firstCapture) {
+    if (video.paused) {
+      videoStatus.textContent = "Final frame captured. Replay the clip if you need another look.";
+    } else {
+      videoStatus.textContent =
+        "Final frame captured below. You can keep watching or replay the clip when ready.";
+    }
+  }
+  
+  replayBtn.disabled = false;
+  const numericTime = Number(
+    ((frameTimeValue ?? source.currentTime ?? 0) || 0).toFixed(3)
+  );
+  capturedFrameTimeValue = Number.isFinite(numericTime) ? numericTime : 0;
+  
+  redrawCanvas();
+  return true;
 }
 
 function _onFrozenFrameReady() {
