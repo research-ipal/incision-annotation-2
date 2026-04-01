@@ -77,13 +77,15 @@
         </div>
       </header>
       <div class="card__body">
-        <canvas id="finalFrame" width="1280" height="720" hidden></canvas>
+        
         <div class="canvas-container" id="canvasContainer" hidden>
+          <canvas id="finalFrame" width="1280" height="720"></canvas>
           <canvas id="annotationCanvas"></canvas>
-          <p class="canvas-hint">
+          <p class="canvas-hint" style="position: relative; z-index: 20; padding: 1rem; text-align: center; margin: 0;">
             Tap or click to place the start of the incision, drag, and release to finish.
           </p>
         </div>
+        
         <p class="help" id="annotationStatus">
           The final frame appears below shortly.
         </p>
