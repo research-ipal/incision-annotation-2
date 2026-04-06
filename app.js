@@ -244,6 +244,11 @@ function resizeCanvases(videoWidth, videoHeight) {
   finalFrameCanvas.height = height;
   annotationCanvas.width = width;
   annotationCanvas.height = height;
+
+  const canvasStage = finalFrameCanvas.parentElement;
+  if (canvasStage) {
+    canvasStage.style.aspectRatio = `${width} / ${height}`;
+  }
 }
 
 function bufferFrame(source) {
