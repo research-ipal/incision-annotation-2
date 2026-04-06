@@ -50,6 +50,8 @@ let submissionInFlight = false;
 let capturedFrameTimeValue = 0;
 let helperVideo = null;
 let helperSeekAttempted = false;
+let capturedFrameImageData = null;
+let capturedFrameImageElement = null;
 
 // Sequential Navigation State
 let currentClipIndex = 0;
@@ -196,6 +198,8 @@ function handleVideoError() {
 function resetAnnotationState() {
   teardownHelperVideo();
   frameCaptured = false;
+  capturedFrameImageData = null;
+  capturedFrameImageElement = null;
   activeLine = null;
   expertLines = null; 
   pointerDown = false;
@@ -323,13 +327,24 @@ function captureFrameImage(source, frameTimeValue) {
   annotationCtx.clearRect(0, 0, annotationCanvas.width, annotationCanvas.height);
 
   try {
-    const dataUrl = finalFrameCanvas.toDataURL("image/png");
-    annotationCanvas.style.backgroundImage = `url(${dataUrl})`;
-    annotationCanvas.style.backgroundSize = "contain";
-    annotationCanvas.style.backgroundRepeat = "no-repeat";
-    annotationCanvas.style.backgroundPosition = "center";
+    // Mobile Safari can fail to render large data-URL canvas backgrounds.
+    // Keep the captured frame as an ImageDataURL and redraw it directly on canvas.
+    capturedFrameImageData = finalFrameCanvas.toDataURL("image/png");
+    capturedFrameImageElement = new Image();
+    capturedFrameImageElement.onload = () => {
+      if (frameCaptured) {
+        redrawCanvas();
+      }
+    };
+    capturedFrameImageElement.src = capturedFrameImageData;
+    annotationCanvas.style.backgroundImage = "";
+    annotationCanvas.style.backgroundSize = "";
+    annotationCanvas.style.backgroundRepeat = "";
+    annotationCanvas.style.backgroundPosition = "";
   } catch (error) {
     frameCaptured = false;
+    capturedFrameImageData = null;
+    capturedFrameImageElement = null;
     showToast("Unable to capture frame. Serve the clip from the same origin or enable CORS.");
     return false;
   }
@@ -492,6 +507,22 @@ function normalizeFromPixels(pixels, referenceSize) {
 function redrawCanvas() {
   annotationCtx.clearRect(0, 0, annotationCanvas.width, annotationCanvas.height);
 
+  if (capturedFrameImageElement?.complete) {
+    annotationCtx.drawImage(
+      capturedFrameImageElement,
+      0,
+      0,
+      annotationCanvas.width,
+      annotationCanvas.height
+    );
+    drawOverlayLines();
+    return;
+  }
+
+  drawOverlayLines();
+}
+
+function drawOverlayLines() {
   if (expertLines && Array.isArray(expertLines.incisionDetails)) {
       const ctx = annotationCtx;
       const width = annotationCanvas.width;
