@@ -256,11 +256,29 @@ function bufferFrame(source) {
 
   resizeCanvases(source.videoWidth, source.videoHeight);
 
-  overlayCtx.clearRect(0, 0, finalFrameCanvas.width, finalFrameCanvas.height);
-  overlayCtx.drawImage(source, 0, 0, finalFrameCanvas.width, finalFrameCanvas.height);
+  const canvasW = finalFrameCanvas.width;
+  const canvasH = finalFrameCanvas.height;
 
-  annotationCtx.clearRect(0, 0, annotationCanvas.width, annotationCanvas.height);
-  annotationCanvas.style.backgroundImage = "";
+  const videoW = source.videoWidth;
+  const videoH = source.videoHeight;
+
+  // Calculate aspect-fit (contain)
+  const scale = Math.min(canvasW / videoW, canvasH / videoH);
+  const drawW = videoW * scale;
+  const drawH = videoH * scale;
+
+  const offsetX = (canvasW - drawW) / 2;
+  const offsetY = (canvasH - drawH) / 2;
+
+  overlayCtx.clearRect(0, 0, canvasW, canvasH);
+
+  overlayCtx.drawImage(
+    source,
+    0, 0, videoW, videoH,     // source
+    offsetX, offsetY, drawW, drawH  // destination
+  );
+
+  annotationCtx.clearRect(0, 0, canvasW, canvasH);
 
   finalFrameBuffered = true;
   return true;
