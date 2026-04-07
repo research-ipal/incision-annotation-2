@@ -150,45 +150,31 @@ body {
   color: var(--text-muted);  
 }
 
-.canvas-container {  
-  position: relative;  
-  display: grid;  
-  gap: 0.5rem;  
+.canvas-container {    
+  position: relative;    
+  width: 100%;    
+  background: rgba(15, 23, 42, 0.45);    
+  border-radius: 18px;    
+  overflow: hidden;    
+  border: 1px solid rgba(148, 163, 184, 0.35);    
 }
 
-.canvas-container canvas {  
-  display: block;  
+#finalFrame {    
+  display: block;    
+  width: 100%;    
+  height: auto;    
 }
 
-.canvas-stage {  
-  position: relative;  
-  width: 100%;  
-  border-radius: 18px;  
-  overflow: hidden;  
-  border: 1px solid rgba(148, 163, 184, 0.35);  
-  background: rgba(15, 23, 42, 0.45);  
-  transform: translateZ(0);  
-}
-
-.canvas-stage canvas {  
-  position: absolute;  
-  inset: 0;  
-  width: 100%;  
-  height: 100%;  
-  display: block;  
-  border: 0;  
-  border-radius: 0;  
-}
-
-#finalFrameCanvas {  
-  z-index: 1;  
-}
-
-#annotationCanvas {  
+#annotationCanvas {    
+  position: absolute;    
+  top: 0;    
+  left: 0;    
+  width: 100%;    
+  height: 100%;    
+  touch-action: none;    
+  cursor: crosshair;    
   z-index: 2;  
-  touch-action: none;  
-  cursor: crosshair;  
-}
+}  
 
 .canvas-hint {  
   margin: 0;  
