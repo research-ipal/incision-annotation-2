@@ -69,23 +69,28 @@
       </div>
     </section>
 
-    <section id="canvasCard" class="card">  
-      <header class="card__header card__header--space">  
-        <h2>3. Annotate Final Frame</h2>  
-        <div class="card__actions">  
-          <button id="clearLineBtn" type="button" class="ghost" disabled>Clear Line</button>  
-        </div>  
-      </header>  
-      <div class="card__body">  
-        <div class="canvas-container" id="canvasContainer" hidden>  
-          <canvas id="finalFrame"></canvas>  
-          <canvas id="annotationCanvas"></canvas>  
-        </div>  
-        <p class="canvas-hint" id="annotationStatus">  
-          The final frame appears below after full video has been displayed.  
-        </p>  
-      </div>  
-    </section>  
+    <section id="canvasCard" class="card">
+      <header class="card__header card__header--space">
+        <h2>3. Annotate Final Frame</h2>
+        <div class="card__actions">
+          <button id="clearLineBtn" type="button" class="ghost" disabled>Clear Line</button>
+        </div>
+      </header>
+      <div class="card__body">
+        <div class="canvas-container" id="canvasContainer" hidden>
+          <div class="canvas-stage">
+            <canvas id="finalFrame" width="1280" height="720"></canvas>
+            <canvas id="annotationCanvas"></canvas>
+          </div>
+          <p class="canvas-hint">
+            Tap or click to place the start of the incision, drag, and release to finish.
+          </p>
+        </div>
+        <p class="help" id="annotationStatus">
+          The final frame appears below shortly.
+        </p>
+      </div>
+    </section>
 
     <section id="submitCard" class="card">
       <header class="card__header">
