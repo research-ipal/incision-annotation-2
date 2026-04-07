@@ -62,6 +62,9 @@ let isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera M
                      ('ontouchstart' in window) ||   
                      (navigator.maxTouchPoints > 0);
 
+// Track if we should capture on ended event (mobile fallback)  
+let pendingMobileCapture = false;
+
 function showToast(message) {  
   const toast = toastTemplate.content.firstElementChild.cloneNode(true);  
   toast.textContent = message;  
@@ -205,7 +208,8 @@ function resetAnnotationState() {
   pointerDown = false;  
   latestPayload = null;  
   submissionInFlight = false;  
-  mobileRetryCount = 0;
+  mobileRetryCount = 0;  
+  pendingMobileCapture = false;
 
   annotationCtx.clearRect(0, 0, annotationCanvas.width, annotationCanvas.height);  
   overlayCtx.clearRect(0, 0, finalFrameCanvas.width, finalFrameCanvas.height);
@@ -266,6 +270,14 @@ function prepareHelperVideo() {
     return;  
   }
 
+  // On mobile, we'll rely on capturing from the main video at the end  
+  // The helper video approach is unreliable on mobile Safari/Chrome  
+  if (isMobileDevice) {  
+    pendingMobileCapture = true;  
+    console.log("Mobile device detected - will capture from main video when it ends");  
+    return;  
+  }
+
   helperVideo = document.createElement("video");  
   helperVideo.crossOrigin = "anonymous";  
   helperVideo.preload = "auto";  
@@ -273,7 +285,7 @@ function prepareHelperVideo() {
   helperVideo.setAttribute("playsinline", "");  
   helperVideo.setAttribute("webkit-playsinline", "");  
     
-  // Mobile-specific: Add to DOM temporarily (helps with some mobile browsers)  
+  // Add to DOM temporarily (helps with some browsers)  
   helperVideo.style.position = "absolute";  
   helperVideo.style.width = "1px";  
   helperVideo.style.height = "1px";  
@@ -297,30 +309,12 @@ function handleHelperLoadedMetadata() {
     return;  
   }  
     
-  // On desktop, proceed immediately; on mobile, wait for more data  
-  if (!isMobileDevice) {  
-    attemptHelperSeek();  
-  }  
+  attemptHelperSeek();  
 }
 
 function handleHelperLoadedData() {  
-  if (!helperVideo || frameCaptured) return;  
-    
-  // On mobile, try playing briefly then seeking  
-  if (isMobileDevice && !helperSeekAttempted) {  
-    helperVideo.play().then(() => {  
-      // Play for a tiny moment then pause and seek  
-      setTimeout(() => {  
-        if (helperVideo && !frameCaptured) {  
-          helperVideo.pause();  
-          attemptHelperSeek();  
-        }  
-      }, 100);  
-    }).catch(() => {  
-      // Autoplay blocked, fall back to normal seek  
-      attemptHelperSeek();  
-    });  
-  }  
+  if (!helperVideo || frameCaptured || helperSeekAttempted) return;  
+  attemptHelperSeek();  
 }
 
 function handleHelperCanPlayThrough() {  
@@ -336,21 +330,15 @@ function attemptHelperSeek() {
   helperSeekAttempted = true;  
   const duration = helperVideo.duration;  
     
-  // Use a slightly larger offset on mobile for better compatibility  
-  const offset = isMobileDevice   
-    ? Math.min(0.1, duration * 0.02)  
-    : (duration > 0.5 ? 0.04 : Math.max(duration * 0.5, 0.01));  
-    
+  // Small offset from the end to ensure we get a valid frame  
+  const offset = duration > 0.5 ? 0.04 : Math.max(duration * 0.5, 0.01);  
   const target = Math.max(duration - offset, 0);  
     
   try {  
     helperVideo.currentTime = target;  
   } catch (error) {  
     console.warn("Seek failed:", error);  
-    // On mobile, retry with a different approach  
-    if (isMobileDevice) {  
-      scheduleHelperRetry();  
-    }  
+    scheduleHelperRetry();  
   }  
 }
 
@@ -380,7 +368,7 @@ function helperFinalizeCapture() {
     
   // Check if video dimensions are available  
   if (!helperVideo.videoWidth || !helperVideo.videoHeight) {  
-    if (isMobileDevice && mobileRetryCount < MAX_MOBILE_RETRIES) {  
+    if (mobileRetryCount < MAX_MOBILE_RETRIES) {  
       console.warn("Video dimensions not ready, scheduling retry");  
       scheduleHelperRetry();  
       return;  
@@ -391,7 +379,7 @@ function helperFinalizeCapture() {
     
   // Check readyState - need at least HAVE_CURRENT_DATA (2)  
   if (helperVideo.readyState < 2) {  
-    if (isMobileDevice && mobileRetryCount < MAX_MOBILE_RETRIES) {  
+    if (mobileRetryCount < MAX_MOBILE_RETRIES) {  
       console.warn("Video not ready, scheduling retry");  
       scheduleHelperRetry();  
       return;  
@@ -403,7 +391,7 @@ function helperFinalizeCapture() {
   const success = captureFrameImage(helperVideo, helperVideo.currentTime);  
   if (success) {  
     teardownHelperVideo();  
-  } else if (isMobileDevice && mobileRetryCount < MAX_MOBILE_RETRIES) {  
+  } else if (mobileRetryCount < MAX_MOBILE_RETRIES) {  
     scheduleHelperRetry();  
   } else {  
     handleHelperError();  
@@ -413,16 +401,12 @@ function helperFinalizeCapture() {
 function handleHelperSeeked() {  
   if (!helperVideo || frameCaptured) return;  
     
-  // On mobile, we might need to wait a frame for the video to actually render  
-  if (isMobileDevice) {  
+  // Wait a frame for the video to actually render  
+  requestAnimationFrame(() => {  
     requestAnimationFrame(() => {  
-      requestAnimationFrame(() => {  
-        helperFinalizeCapture();  
-      });  
+      helperFinalizeCapture();  
     });  
-  } else {  
-    helperFinalizeCapture();  
-  }  
+  });  
 }
 
 function handleHelperTimeUpdate() {  
@@ -520,19 +504,45 @@ function handleVideoPlay() {
 }
 
 function handleVideoEnded() {  
-  // On mobile, if helper video failed, use main video as fallback  
-  if (!frameCaptured && isMobileDevice) {  
-    // Small delay to ensure the video is at the final frame  
+  video.controls = true;  
+  video.setAttribute("controls", "");  
+    
+  // On mobile, this is our primary capture method  
+  if (isMobileDevice && !frameCaptured) {  
+    // The video has ended, so currentTime should be at (or very near) the end  
+    // Use a small delay to ensure the final frame is rendered  
     setTimeout(() => {  
       if (!frameCaptured) {  
-        freezeOnFinalFrame();  
+        // Seek back slightly and capture  
+        const duration = video.duration;  
+        if (Number.isFinite(duration)) {  
+          const targetTime = Math.max(duration - 0.05, 0);  
+          video.currentTime = targetTime;  
+            
+          // Wait for the seek to complete  
+          const onSeeked = () => {  
+            video.removeEventListener("seeked", onSeeked);  
+            // Additional delay for frame to render  
+            setTimeout(() => {  
+              if (!frameCaptured) {  
+                captureFrameImage(video, video.currentTime);  
+                if (frameCaptured) {  
+                  videoStatus.textContent =  
+                    "Clip complete. The frozen frame below is ready for annotation. Use Replay to review again.";  
+                }  
+              }  
+            }, 100);  
+          };  
+          video.addEventListener("seeked", onSeeked);  
+        } else {  
+          // Fallback: just try to capture current frame  
+          captureFrameImage(video, video.currentTime);  
+        }  
       }  
     }, 50);  
   } else {  
     freezeOnFinalFrame();  
   }  
-  video.controls = true;  
-  video.setAttribute("controls", "");  
 }
 
 function handleVideoTimeUpdate() {  
@@ -545,32 +555,17 @@ function handleVideoTimeUpdate() {
     return;  
   }
 
+  // On mobile, don't capture during timeupdate - wait for ended event  
+  // This ensures we get the actual final frame  
+  if (isMobileDevice) {  
+    return;  
+  }
+
+  // Desktop: capture near the end using the helper video result or main video  
   const remaining = duration - video.currentTime;  
-    
-  // On mobile, capture earlier and use main video if helper hasn't worked  
-  const threshold = isMobileDevice ? 0.5 : 0.25;  
-    
-  if (remaining <= threshold) {  
-    // On mobile, prefer capturing from the main video being played  
-    // since it's more likely to have the frame data available  
-    if (isMobileDevice || !helperVideo) {  
-      const success = captureFrameImage(video, video.currentTime);  
-      if (!success && remaining <= 0.1) {  
-        // Very close to end, try one more time  
-        requestAnimationFrame(() => {  
-          if (!frameCaptured) {  
-            captureFrameImage(video, duration);  
-          }  
-        });  
-      }  
-    } else {  
-      const success = captureFrameImage(video, duration);  
-      if (!success) {  
-        return;  
-      }  
-    }  
-      
-    if (frameCaptured) {  
+  if (remaining <= 0.25) {  
+    const success = captureFrameImage(video, duration);  
+    if (success) {  
       annotationStatus.textContent = expertLines  
         ? "Final frame ready. Draw your incision line on top of the safety corridor."  
         : "Final frame ready. Review the clip above and draw your incision when ready.";  
